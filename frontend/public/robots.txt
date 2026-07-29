@@ -1,0 +1,6 @@
+# This is a club's scouting sheet for a tournament weekend, not a public page. The roster
+# is other people's names and the notes are what someone saw at their table, so none of it
+# belongs in a search index. `index.html` carries the same instruction as a meta tag, for
+# crawlers that fetch the document without asking here first.
+User-agent: *
+Disallow: /

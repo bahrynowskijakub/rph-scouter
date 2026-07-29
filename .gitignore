@@ -1,0 +1,27 @@
+node_modules/
+dist/
+.env
+.env.local
+
+# yarn berry
+.yarn/*
+!.yarn/patches
+!.yarn/releases
+!.yarn/plugins
+.pnp.*
+
+# Local libSQL database. Production lives in Turso; this file is dev-only and holds real
+# people's names, so it never goes near a repo. cards.db is 1,6 MB that nothing opens any
+# more — see README — and 1,6 MB you cannot take back out of git history.
+backend/data/*.db
+backend/data/*.db-journal
+backend/data/*.db-wal
+backend/data/*.db-shm
+
+# vercel link/build state
+.vercel
+
+*.tsbuildinfo
+
+*.log
+.DS_Store

@@ -1,0 +1,1189 @@
+@import 'tailwindcss';
+
+/* ═══════════════════════════════════ font ════════════════════════════════════
+   One family, self-hosted — nothing leaves the venue wifi, and the list keeps its
+   typography when the hall's uplink dies. Outfit is a geometric sans: circular bowls,
+   monoline strokes, open apertures. It carries a 30px heading and a 12px label without
+   a second family, which is why there is only one.                                  */
+
+@font-face {
+  font-family: 'Outfit';
+  src: url('/fonts/outfit-latin.woff2') format('woff2');
+  font-weight: 300 700;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
+    U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215,
+    U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Outfit';
+  src: url('/fonts/outfit-latin-ext.woff2') format('woff2');
+  font-weight: 300 700;
+  font-style: normal;
+  font-display: swap;
+  /* Polish ą ć ę ł ń ś ź ż all live here, so the tournament name needs this subset. */
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304,
+    U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB,
+    U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+/* ═══════════════════════════════════ tokens ══════════════════════════════════ */
+:root {
+  /* The six inks, read straight off the plates in `public/inkColors`. Three shades each:
+     `core` is the plate's fill, `-rim` its outline at full saturation, and the bare name
+     is the symbol's own colour — the ink lightened until it carries on indigo. */
+  --ink-amber: #fdd868;
+  --ink-amethyst: #aa84bd;
+  --ink-emerald: #82bf71;
+  --ink-ruby: #f36b76;
+  --ink-sapphire: #54b9de;
+  --ink-steel: #b0c2cc;
+
+  --ink-amber-rim: #de9922;
+  --ink-amethyst-rim: #64296b;
+  --ink-emerald-rim: #289345;
+  --ink-ruby-rim: #c31d2b;
+  --ink-sapphire-rim: #0096c7;
+  --ink-steel-rim: #7d8c96;
+
+  /* Indigo-black, not neutral grey. The ladder between steps is deliberately tight —
+     a card is separated from the page by a whisper of lift, never by a border. */
+  --bg: #0e1127;
+  --surface: #15182e;
+  --surface-2: #1f2338;
+  --surface-3: #272c45;
+  --divider: oklch(1 0 0 / 0.07);
+
+  --text: #f1f3ff;
+  --text-2: #c2c6db;
+  --muted: #757c95;
+
+  /* The mark's own colour, and the only accent in the interface. Everything else is
+     indigo and grey until a deck needs to speak. */
+  --gold: #d2b886;
+  --gold-deep: #b89a63;
+
+  --green: #5ec982;
+  --amber: #efa941;
+  --red: #ec576a;
+
+  --r: 12px;
+  --r-sm: 8px;
+  --r-lg: 16px;
+  --r-sheet: 22px;
+
+  --font-sans:
+    'Outfit', ui-sans-serif, system-ui, -apple-system, sans-serif, 'Apple Color Emoji',
+    'Segoe UI Emoji', 'Noto Color Emoji';
+
+  --header-h: 60px;
+  /* iOS-sheet easing: fast out of the gate, long settle. Used for every transition. */
+  --ease: cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/* Only the handful of tokens worth reaching for from a Tailwind utility. */
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-fg: var(--text);
+  --font-sans: var(--font-sans);
+}
+
+/* ═══════════════════════════════════ base ════════════════════════════════════ */
+html {
+  color-scheme: dark;
+  /* One flat indigo, lifted a few values at the very top so the page has a horizon
+     without a texture. No lattice, no grain, no glow — the surfaces do the work. */
+  background: var(--bg);
+  background-image: linear-gradient(180deg, #141834 0%, var(--bg) 420px);
+  background-repeat: no-repeat;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: transparent;
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  font-weight: 400;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+input,
+textarea,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+  border-radius: var(--r-sm);
+}
+
+::selection {
+  background: color-mix(in oklch, var(--gold) 34%, transparent);
+}
+
+/* ═══════════════════════════════════ layout ══════════════════════════════════ */
+.shell {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+.container {
+  width: 100%;
+  max-width: 620px;
+  margin: 0 auto;
+  /* Notch-safe on a phone held sideways, still centred on a desktop. */
+  padding-inline: max(18px, env(safe-area-inset-left)) max(18px, env(safe-area-inset-right));
+}
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  padding-top: env(safe-area-inset-top);
+  /* Opaque, like the search bar under it: a frosted header lets rows ghost through as
+     they scroll past, which on a phone reads as a rendering fault rather than depth.
+     No hairline underneath — the search band's lighter fill is the seam. */
+  background: var(--bg);
+}
+
+.topbar-inner {
+  height: var(--header-h);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.wordmark {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.012em;
+  color: var(--text);
+  text-decoration: none;
+}
+.wordmark img {
+  width: 26px;
+  height: 26px;
+  flex: none;
+  display: block;
+}
+
+/* The tournament, as a chip in the chrome rather than a heading over the list. It is the
+   one thing on screen that never changes while you work, so it gets the quietest
+   treatment that is still legible — and it takes the ellipsis, because a hall's official
+   event name is routinely longer than a phone is wide. */
+.event-badge {
+  flex: 0 1 auto;
+  min-width: 0;
+  padding: 5px 11px;
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: 12.5px;
+  font-weight: 500;
+  letter-spacing: -0.008em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  animation: fade-in 0.3s var(--ease);
+}
+
+/* ═════════════════════════════════════ search ════════════════════════════════
+   Not a field sitting in the page — a band of the chrome. It runs edge to edge directly
+   under the nameplate, on its own lighter fill, and sticks there. Two strips of chrome
+   in two tones, then content: you always know where the instrument is, and it never has
+   to compete with the cards for the same rounded-rectangle vocabulary.               */
+.searchbar {
+  position: sticky;
+  top: calc(var(--header-h) + env(safe-area-inset-top));
+  z-index: 20;
+  background: var(--surface);
+  box-shadow: inset 0 -1px 0 var(--divider);
+  transition: background 0.2s var(--ease);
+}
+.searchbar:focus-within {
+  background: var(--surface-2);
+}
+/* Typing lights the bar along its whole bottom edge — the one moment of gold on the
+   roster screen, and it spans the viewport rather than outlining a box. */
+.searchbar::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: var(--gold);
+  transform: scaleX(0);
+  transition: transform 0.3s var(--ease);
+}
+.searchbar:focus-within::after {
+  transform: scaleX(1);
+}
+
+.search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 54px;
+}
+.search-icon {
+  position: absolute;
+  left: 0;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  pointer-events: none;
+  transition: color 0.18s var(--ease);
+}
+.search:focus-within .search-icon {
+  color: var(--gold);
+}
+/* Transparent: the band is the field. Full height, so the whole strip is the tap target. */
+.search-field {
+  /* A flex child, not width:100% — the count and the clear button share this row. */
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0 0 0 32px;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  color: var(--text);
+  /* 16px exactly: anything smaller and iOS zooms the page on focus. */
+  font-size: 16px;
+  font-weight: 400;
+  appearance: none;
+}
+.search-field::placeholder {
+  color: var(--muted);
+}
+.search-field:focus {
+  outline: none;
+}
+/* Safari draws its own clear affordance on type=search; ours is the only one. */
+.search-field::-webkit-search-cancel-button,
+.search-field::-webkit-search-decoration {
+  appearance: none;
+}
+
+/* Sits between the text and the clear button while a query is live. Cheap to render and
+   answers the only question a search on 81 names raises: did that narrow it down? */
+.search-count {
+  flex: none;
+  padding-right: 8px;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.search-clear {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: 50%;
+  background: var(--surface-3);
+  color: var(--text-2);
+  transition: background 0.14s var(--ease);
+}
+@media (hover: hover) {
+  .search-clear:hover {
+    background: #39406088;
+    color: var(--text);
+  }
+}
+
+/* The list now starts the page, so it carries the air the heading used to provide. */
+.roster {
+  padding-top: 22px;
+  padding-bottom: 28px;
+}
+
+/* ══════════════════════════════════ the two lists ════════════════════════════
+   The roster is two different things and used to look like one: eighty identical slabs,
+   the four that carry intelligence indistinguishable at a glance from the seventy-six
+   that are still blank.
+
+   So they are now built differently. A filed report is a card — lifted off the page,
+   washed in its deck's colours, two lines tall. An empty player is a line in an index —
+   no fill, no radius, hairline-separated, half the height. Scrolling past the cards and
+   into the index is a change of texture you feel before you read anything.            */
+.group + .group {
+  margin-top: 22px;
+}
+
+.group-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 2px 9px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);
+}
+.group-count {
+  margin-left: auto;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: 11.5px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Filed reports: cards, with air between them. */
+.group-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Everyone else: a ruled index, flush, no gaps to widen it. */
+.group-rows {
+  display: flex;
+  flex-direction: column;
+}
+
+/* ═════════════════════════════════ player card ═══════════════════════════════ */
+
+/* A filed report. Two lines — who they are and what they play on the first, what somebody
+   saw on the second — on a card washed with the deck's own colours, so the colour of a
+   row IS the deck rather than a marker reporting on it. */
+.player {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 5px;
+  width: 100%;
+  min-height: 64px;
+  padding: 13px 15px;
+  border: 0;
+  border-radius: var(--r);
+  background:
+    linear-gradient(
+      101deg,
+      color-mix(in oklch, var(--c1, transparent) 26%, transparent) 0%,
+      color-mix(in oklch, var(--c2, transparent) 16%, transparent) 52%,
+      transparent 88%
+    ),
+    var(--surface);
+  color: var(--text);
+  text-align: left;
+  transition:
+    transform 0.14s var(--ease),
+    filter 0.16s var(--ease);
+}
+.player:active {
+  transform: scale(0.988);
+  filter: brightness(1.18);
+}
+@media (hover: hover) {
+  .player:hover {
+    filter: brightness(1.14);
+  }
+}
+
+.player-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.player-nick {
+  flex: 1;
+  min-width: 0;
+  font-size: 15.5px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+  /* One line, with the plates pinned beside it — the pair must never be pushed off. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.player-inks {
+  flex: none;
+  display: flex;
+  align-items: center;
+}
+
+/* Nobody has filed a deck yet, so there is nothing to put on a card. A blank player is a
+   line in an index: no fill, no radius, a hairline between neighbours, and a hair over
+   the 44px thumb minimum. Seventy of these under four cards is the rhythm of the screen. */
+.player-blank {
+  min-height: 46px;
+  padding: 8px 6px;
+  border-radius: 0;
+  background: none;
+}
+.player-blank + .player-blank {
+  box-shadow: inset 0 1px 0 var(--divider);
+}
+.player-blank .player-nick {
+  font-size: 14.5px;
+  font-weight: 400;
+  color: var(--text-2);
+}
+.player-blank:active {
+  transform: none;
+  filter: none;
+  background: var(--surface);
+  border-radius: var(--r-sm);
+}
+@media (hover: hover) {
+  .player-blank:hover {
+    filter: none;
+    background: var(--surface);
+    border-radius: var(--r-sm);
+  }
+}
+
+/* Withdrawn from the event: kept on the list so the report survives, but dimmed. */
+.player-out {
+  opacity: 0.42;
+}
+
+/* The whole width, under both — a note is the long half of a scouting report and should
+   not have to squeeze past a column of hexagons. */
+.player-note {
+  font-size: 13px;
+  line-height: 1.42;
+  color: var(--text-2);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+.roster-empty {
+  padding: 44px 20px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 14.5px;
+}
+.roster-error {
+  padding: 24px 20px;
+  text-align: center;
+  color: var(--red);
+  font-size: 14.5px;
+}
+
+/* Tinted with the accent rather than filled by it — the badge recipe of the whole app. */
+.notice {
+  display: flex;
+  gap: 10px;
+  padding: 12px 15px;
+  margin-bottom: 14px;
+  border-radius: var(--r);
+  background: color-mix(in srgb, var(--amber) 16%, var(--surface));
+  color: var(--amber);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.footnote {
+  margin: 0;
+  padding: 20px 0 calc(28px + env(safe-area-inset-bottom));
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+/* ═══════════════════════════════════ ink plates ══════════════════════════════
+   Every plate is the same hexagon, so one ratio converts a stated height into a width
+   and the six symbols always line up on a shared baseline.                          */
+.ink {
+  --ink-h: 26px;
+  height: var(--ink-h);
+  /* 164 / 188 — the plate's own aspect, from the artwork. */
+  width: calc(var(--ink-h) * 0.8723);
+  flex: none;
+  display: inline-flex;
+}
+.ink svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.ink-xs {
+  --ink-h: 16px;
+}
+.ink-sm {
+  --ink-h: 20px;
+}
+.ink-lg {
+  --ink-h: 38px;
+}
+.ink-xl {
+  --ink-h: 52px;
+}
+
+.ink-slot {
+  color: oklch(1 0 0 / 0.16);
+}
+
+/* Set side by side rather than interlocked: a tinted card has no single flat colour to
+   cut the rear plate out of, and a clean gap counts faster anyway. */
+.ink-pair {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* ═════════════════════════════════ bottom sheet ══════════════════════════════ */
+.sheet-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: oklch(0.08 0.02 275 / 0.66);
+  -webkit-backdrop-filter: blur(5px);
+  backdrop-filter: blur(5px);
+  animation: fade-in 0.22s ease;
+}
+
+.sheet {
+  position: relative;
+  width: 100%;
+  max-width: 540px;
+  max-height: 92dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border-radius: var(--r-sheet) var(--r-sheet) 0 0;
+  animation: sheet-rise 0.42s var(--ease);
+  /* The drag writes transforms every frame; promote the layer once, up front. */
+  will-change: transform;
+  outline: none;
+}
+
+/* Everything above the scroller is the drag handle. `touch-action: none` is what lets the
+   gesture take the frame instead of the browser starting a scroll. */
+.sheet-grab {
+  flex: none;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.sheet-grip {
+  display: block;
+  width: 36px;
+  height: 4px;
+  margin: 9px auto 0;
+  border-radius: 999px;
+  background: oklch(1 0 0 / 0.18);
+  transition:
+    width 0.24s var(--ease),
+    background 0.24s var(--ease);
+}
+/* Under the thumb the grip stretches and brightens — the sheet acknowledging the grab. */
+.sheet[data-dragging] .sheet-grip {
+  width: 54px;
+  background: var(--muted);
+}
+
+.sheet-head {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 14px 12px 14px 18px;
+}
+.sheet-title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: 17.5px;
+  font-weight: 600;
+  letter-spacing: -0.018em;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+.sheet-kicker {
+  display: block;
+  margin-bottom: 1px;
+  font-size: 12.5px;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+/* The pair the picker is building, at full size. Tap a colour and the mark assembles
+   here — the deck taking shape while you file it. */
+.sheet-hero {
+  flex: none;
+  display: grid;
+  place-items: center;
+  min-width: 46px;
+  min-height: 48px;
+}
+.sheet-hero .ink {
+  animation: plate-in 0.32s var(--ease) backwards;
+}
+
+.sheet-body {
+  flex: 1;
+  min-height: 0;
+  /* Only a safety valve. The form is sized to fit a phone outright, so on any normal
+     screen this never scrolls — the picker and the note are one glance, not a page. */
+  overflow-y: auto;
+  touch-action: pan-y;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 4px 18px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.sheet-foot {
+  display: flex;
+  gap: 9px;
+  padding: 12px 18px calc(14px + env(safe-area-inset-bottom));
+  background: var(--surface);
+  border-radius: 0 0 var(--r-sheet) var(--r-sheet);
+}
+
+/* Wide enough for a real dialog — centre it, let go of the bottom edge, and drop the
+   gesture with it. There is nothing to throw a sheet at with a mouse. */
+@media (min-width: 600px) {
+  .sheet-scrim {
+    align-items: center;
+    padding: 24px;
+  }
+  .sheet {
+    border-radius: var(--r-lg);
+    animation: pop 0.24s var(--ease);
+  }
+  .sheet-grab {
+    touch-action: auto;
+  }
+  .sheet-grip {
+    display: none;
+  }
+  .sheet-head {
+    padding-top: 18px;
+  }
+  .sheet-foot {
+    border-radius: 0 0 var(--r-lg) var(--r-lg);
+  }
+}
+
+/* ═══════════════════════════════════ ink picker ══════════════════════════════
+   Three across, two down. Six in a single row fits, but the plates shrink to thumbnails
+   and the labels to 10px — and the plates are the one piece of artwork in the app. At
+   three columns they are big enough to actually look at, and the sheet still clears a
+   phone without scrolling because the note below it is only three rows tall.        */
+.ink-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.ink-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  min-height: 86px;
+  padding: 12px 4px 10px;
+  border: 0;
+  border-radius: var(--r);
+  background: var(--surface-2);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  color: var(--muted);
+  transition:
+    background 0.22s var(--ease),
+    color 0.22s var(--ease),
+    transform 0.16s var(--ease);
+}
+.ink-tile:active {
+  transform: scale(0.95);
+}
+/* An unpicked colour is drained rather than hidden: the symbol stays recognisable, so
+   the row still teaches which hexagon is which, and choosing one floods it back. */
+.ink-tile .ink {
+  --ink-h: 40px;
+  /* Drained, not extinguished — the symbol still has to be recognisable, or the grid
+     stops teaching which hexagon is which. */
+  filter: grayscale(0.85) brightness(0.78);
+  transition:
+    filter 0.24s var(--ease),
+    transform 0.24s var(--ease);
+}
+/* Mixed in sRGB, not oklch: interpolating a crimson rim towards indigo the polar way
+   takes the short arc through magenta, and the Ruby tile comes out pink. */
+.ink-tile[aria-pressed='true'] {
+  background: color-mix(in srgb, var(--rim) 30%, var(--surface-2));
+  color: var(--text);
+}
+.ink-tile[aria-pressed='true'] .ink {
+  filter: none;
+  transform: scale(1.06);
+}
+
+/* ═══════════════════════════════════ primitives ══════════════════════════════ */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: var(--r);
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 14.5px;
+  font-weight: 500;
+  transition:
+    background 0.14s var(--ease),
+    transform 0.14s var(--ease),
+    opacity 0.14s var(--ease);
+}
+.btn:active:not(:disabled) {
+  transform: scale(0.975);
+}
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+@media (hover: hover) {
+  .btn:hover:not(:disabled) {
+    background: var(--surface-3);
+  }
+}
+
+.btn-primary {
+  background: var(--gold);
+  color: #16182c;
+  font-weight: 600;
+}
+/* Dimming gold just makes a muddy slab; an inert button should read as an empty seat. */
+.btn-primary:disabled {
+  background: var(--surface-2);
+  color: var(--muted);
+  opacity: 1;
+}
+@media (hover: hover) {
+  .btn-primary:hover:not(:disabled) {
+    background: #ddc696;
+  }
+}
+
+.btn-danger {
+  background: color-mix(in srgb, var(--red) 18%, var(--surface));
+  color: var(--red);
+}
+@media (hover: hover) {
+  .btn-danger:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--red) 26%, var(--surface));
+  }
+}
+
+.btn-sm {
+  min-height: 38px;
+  padding: 0 14px;
+  font-size: 13.5px;
+}
+
+.btn-grow {
+  flex: 1;
+}
+
+.icon-btn {
+  width: 38px;
+  height: 38px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  transition:
+    background 0.14s var(--ease),
+    color 0.14s var(--ease);
+}
+@media (hover: hover) {
+  .icon-btn:hover {
+    background: var(--surface-2);
+    color: var(--text);
+  }
+}
+
+.input {
+  width: 100%;
+  min-height: 48px;
+  padding: 12px 14px;
+  border: 0;
+  border-radius: var(--r);
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 16px;
+  transition: box-shadow 0.18s var(--ease);
+}
+.input::placeholder {
+  color: var(--muted);
+}
+.input:focus {
+  outline: none;
+  box-shadow: inset 0 0 0 1.5px color-mix(in oklch, var(--gold) 60%, transparent);
+}
+
+.textarea {
+  min-height: 88px;
+  line-height: 1.5;
+  /* A resize grabber is a mouse affordance; on a phone it is just a speck of noise. */
+  resize: none;
+}
+@media (min-width: 600px) {
+  .textarea {
+    resize: vertical;
+  }
+}
+
+/* Sentence case, no tracking, no caps — the reference language throughout. */
+.label {
+  display: block;
+  margin-bottom: 9px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);
+}
+.label-count {
+  margin-left: 7px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-2);
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.badge-danger {
+  background: color-mix(in srgb, var(--red) 20%, var(--surface));
+  color: var(--red);
+}
+
+.error-text {
+  margin: 0;
+  color: var(--red);
+  font-size: 13.5px;
+}
+
+.spinner {
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  border: 2px solid color-mix(in oklch, currentColor 25%, transparent);
+  border-top-color: currentColor;
+  animation: spin 0.7s linear infinite;
+}
+
+.skeleton {
+  background: linear-gradient(
+    100deg,
+    var(--surface) 30%,
+    var(--surface-2) 46%,
+    var(--surface) 62%
+  );
+  background-size: 340% 100%;
+  animation: shimmer 1.4s ease infinite;
+  border-radius: var(--r-sm);
+}
+.skeleton-player {
+  height: 62px;
+  border-radius: var(--r);
+}
+
+/* ══════════════════════════════════ admin panel ══════════════════════════════ */
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-bottom: calc(36px + env(safe-area-inset-bottom));
+}
+
+.page-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 22px 0 10px;
+}
+.page-head-body {
+  flex: 1;
+  min-width: 0;
+}
+.page-title {
+  margin: 0 0 3px;
+  font-size: clamp(24px, 6.6vw, 30px);
+  font-weight: 600;
+  line-height: 1.12;
+  letter-spacing: -0.026em;
+}
+.page-sub {
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--muted);
+}
+
+.panel {
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  overflow: hidden;
+}
+.panel-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 16px 18px 0;
+}
+.panel-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.014em;
+}
+.panel-note {
+  margin: 0 0 0 auto;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.panel-body {
+  padding: 16px 18px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.panel-hint {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+.panel-said {
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--green);
+}
+
+/* Three readouts before any control — what is loaded, how many came back, how stale. */
+.stat-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+.stat {
+  min-width: 0;
+  padding: 11px 13px;
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+}
+.stat-key {
+  display: block;
+  margin-bottom: 2px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.stat-val {
+  display: block;
+  font-size: 15px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.field-row {
+  display: flex;
+  gap: 8px;
+}
+
+.log {
+  display: flex;
+  flex-direction: column;
+  max-height: 400px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.log-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+  font-size: 13px;
+}
+.log-row + .log-row {
+  border-top: 1px solid var(--divider);
+}
+.log-name {
+  flex: 1;
+  min-width: 0;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.log-time {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.log-empty {
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--muted);
+}
+
+/* ═══════════════════════════════ gate & not-found ════════════════════════════ */
+.gate {
+  max-width: 380px;
+  margin: 0 auto;
+  padding-top: 12vh;
+}
+.gate-mark {
+  display: grid;
+  place-items: center;
+  margin-bottom: 18px;
+}
+.gate-mark img {
+  width: 52px;
+  height: 52px;
+  display: block;
+}
+.gate-title {
+  margin: 0 0 4px;
+  font-size: 23px;
+  font-weight: 600;
+  letter-spacing: -0.022em;
+}
+.gate-sub {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.nf {
+  padding-top: 16vh;
+  text-align: center;
+}
+.nf-mark {
+  display: grid;
+  place-items: center;
+  margin-bottom: 20px;
+}
+.nf-code {
+  margin: 0 0 6px;
+  font-size: clamp(52px, 16vw, 72px);
+  font-weight: 300;
+  line-height: 1;
+  letter-spacing: -0.04em;
+}
+.nf-text {
+  margin: 0 0 24px;
+  font-size: 14.5px;
+  color: var(--muted);
+}
+
+/* ═══════════════════════════════════ motion ══════════════════════════════════ */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes sheet-rise {
+  from {
+    transform: translate3d(0, 100%, 0);
+  }
+}
+@keyframes pop {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.985);
+  }
+}
+@keyframes plate-in {
+  from {
+    opacity: 0;
+    transform: scale(0.62);
+  }
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: 0 0;
+  }
+}
+@keyframes settle {
+  from {
+    opacity: 0;
+    transform: translateY(7px);
+  }
+}
+
+/* One orchestrated reveal on arrival — the first rows cascade, the rest are already
+   there by the time you have scrolled to them. */
+.roster-enter .player {
+  animation: settle 0.32s var(--ease) backwards;
+  animation-delay: calc(var(--i, 0) * 24ms);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

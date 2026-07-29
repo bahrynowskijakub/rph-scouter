@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="pl">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/webp" href="/favicon_192.webp" />
+    <link rel="apple-touch-icon" href="/favicon_192.webp" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <!-- One theme, so one colour, and no pre-paint script to pick between two.
+         It matches --bg in index.css. -->
+    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#0e1127" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <!--
+      A shared sheet for one club's tournament weekend, not a public page: the roster is
+      other people's names and the notes are what someone saw at their table. `robots.txt`
+      repeats this for crawlers that never parse the document.
+    -->
+    <meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noimageindex" />
+    <meta name="googlebot" content="noindex, nofollow" />
+    <meta
+      name="description"
+      content="RPH Scouter — scouting decków na turniejach Disney Lorcana."
+    />
+    <title>RPH Scouter</title>
+
+    <!--
+      Both subsets, because the roster is Polish and the diacritics live in the extended
+      one. Preloading them means the tournament name and the player list arrive in their
+      own type instead of swapping a beat later.
+    -->
+    <link rel="preload" href="/fonts/outfit-latin.woff2" as="font" type="font/woff2" crossorigin />
+    <link
+      rel="preload"
+      href="/fonts/outfit-latin-ext.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

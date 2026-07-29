@@ -1,0 +1,73 @@
+# /etc/caddy/Caddyfile
+#
+# Caddy jest tu warstwą, która robi z dwóch procesów jedno origin: statyki podaje sam,
+# /api/* przekazuje do Node. Dzięki temu przeglądarka widzi jedną domenę — dokładnie to,
+# co aplikacja zakłada (frontend woła `/api` relatywnie, ciastko admina ma SameSite=Lax),
+# i dlatego ta ścieżka wdrożenia nie wymaga żadnej zmiany w kodzie.
+#
+# Podmień domenę w pierwszej linii i nic więcej.
+
+rph-scouter.example.com {
+	header {
+		# Jedyna warstwa, której frontend nie ustawi sam — index.html niesie już
+		# <meta name="robots">, a public/robots.txt mówi to samo crawlerom, które
+		# dokumentu nie parsują. To jest dla tych, które parsują wyłącznie nagłówki.
+		X-Robots-Tag "noindex, nofollow"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "same-origin"
+		-Server
+	}
+
+	# `route` zamiast dwóch samodzielnych `handle` — kolejność jest wtedy taka, jak
+	# napisana, a nie wyliczona ze specyficzności matcherów.
+	route {
+		# Żadnego wyłączania buforowania: od kiedy realtime to polling delty
+		# (/api/participants/delta), każde żądanie kończy się odpowiedzią i nie ma
+		# strumienia, który proxy mogłoby zatrzymać po drodze.
+		handle /api/* {
+			reverse_proxy 127.0.0.1:4000
+		}
+
+		handle {
+			root * /srv/rph-scouter/frontend/dist
+
+			# Kompresja tylko na statykach. Odpowiedzi API są albo małe (delta to
+			# ~76 bajtów), albo i tak jednorazowe — a `encode` nad całym blokiem
+			# dawałby CPU za nic przy każdym tyknięciu pollingu.
+			encode zstd gzip
+
+			# Domyślnie nie cache'ujemy nic, potem robimy wyjątki. Odwrotna kolejność
+			# (wyjątek na index.html) byłaby cicho zepsuta: `header` ocenia matchery na
+			# ORYGINALNEJ ścieżce, a try_files przepisuje /admin na /index.html dopiero
+			# potem — więc `path /index.html` nigdy nie złapałoby wejścia na /admin
+			# i panel admina jechałby bez Cache-Control.
+			#
+			# Świeży index.html jest tu warunkiem poprawności, nie optymalizacją: stary
+			# dokument woła /assets z hashami, których po deployu już nie ma.
+			header Cache-Control "no-store"
+
+			# Vite hashuje nazwy w /assets, więc te pliki są niezmienne z definicji.
+			# Te ścieżki istnieją na dysku, więc try_files ich nie przepisuje i matcher
+			# widzi je takimi, jakie przyszły.
+			@immutable path /assets/*
+			header @immutable Cache-Control "public, max-age=31536000, immutable"
+
+			# Fonty i favicon nazw nie hashują — tydzień, żeby podmiana Outfita nie
+			# została w telefonach na rok.
+			@static path /fonts/* /favicon_192.webp
+			header @static Cache-Control "public, max-age=604800"
+
+			try_files {path} /index.html
+			file_server
+		}
+	}
+
+	log {
+		output file /var/log/caddy/rph-scouter.log {
+			roll_size 10MiB
+			roll_keep 5
+		}
+		# Lista to cudze nazwiska, a ścieżki żądań niosą registrationId. Logi dostępowe
+		# nie mają po co trzymać tego dłużej niż potrzeba na debug.
+	}
+}

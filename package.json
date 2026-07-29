@@ -1,0 +1,20 @@
+{
+  "name": "rph-scouter",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "frontend",
+    "backend"
+  ],
+  "scripts": {
+    "dev": "concurrently -n api,web -c cyan,magenta \"yarn workspace rph-scouter-backend dev\" \"yarn workspace rph-scouter-frontend dev\"",
+    "build": "yarn workspace rph-scouter-frontend build",
+    "start": "yarn workspace rph-scouter-backend start",
+    "db:migrate": "yarn workspace rph-scouter-backend db:migrate",
+    "typecheck": "yarn workspace rph-scouter-frontend typecheck"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  },
+  "packageManager": "yarn@4.12.0"
+}

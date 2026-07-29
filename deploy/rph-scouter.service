@@ -1,0 +1,64 @@
+[Unit]
+Description=RPH Scouter API (Express + SQLite)
+Documentation=file:///srv/rph-scouter/DEPLOY.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=rph
+Group=rph
+WorkingDirectory=/srv/rph-scouter
+ExecStart=/usr/bin/node backend/src/index.js
+
+# Nie kładź .env na serwerze. config.js woła dotenv na katalogu repo, a dotenv nie
+# nadpisuje zmiennych już obecnych w środowisku — ale każdą, której tu nie ustawisz,
+# poda z pliku. Jeden plik konfiguracji, nie dwa.
+EnvironmentFile=/etc/rph-scouter.env
+
+Restart=always
+RestartSec=2
+
+# index.js zamyka strumienie SSE i sockety keep-alive na SIGTERM. Bez tego restart
+# czekałby, aż każdy telefon w sali sam się rozłączy.
+KillSignal=SIGTERM
+TimeoutStopSec=20
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=rph-scouter
+
+# Tworzy /var/lib/rph-scouter (0750, rph:rph) i pozwala tam pisać przy
+# ProtectSystem=strict. Tu mieszka scouter.db razem z plikami -wal i -shm.
+StateDirectory=rph-scouter
+StateDirectoryMode=0750
+
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ProtectClock=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+# AF_NETLINK musi tu być, choć wygląda zbędnie przy serwerze HTTP. glibc robi
+# getaddrinfo() z AI_ADDRCONFIG, co enumeruje lokalne interfejsy przez netlink — bez tego
+# Node nie rozwiąże api.cloudflare.ravensburgerplay.com i pobieranie listy z RPH przestanie
+# działać, podczas gdy sama aplikacja będzie wyglądać na zdrową (SQLite ma kopię listy).
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+
+# MemoryDenyWriteExecute NIE może tu być. JIT V8 mapuje pamięć jako W+X, więc Node
+# nie wystartuje. To jedyne utwardzenie, którego ta usługa nie zniesie.
+#
+# Gdyby usługa nie startowała po zmianie wersji Node: pierwsze do zakomentowania to
+# SystemCallFilter, drugie ProtectSystem. `journalctl -u rph-scouter -n 50` powie, które.
+
+[Install]
+WantedBy=multi-user.target

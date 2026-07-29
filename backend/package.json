@@ -1,0 +1,22 @@
+{
+  "name": "rph-scouter-backend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "commonjs",
+  "main": "src/index.js",
+  "scripts": {
+    "dev": "node --watch src/index.js",
+    "start": "node src/index.js",
+    "db:migrate": "node scripts/migrate.js"
+  },
+  "dependencies": {
+    "@libsql/client": "^0.17.4",
+    "@vercel/functions": "^3.7.6",
+    "bcryptjs": "^3.0.2",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.5",
+    "dotenv": "^17.0.0",
+    "express": "^5.2.1",
+    "jsonwebtoken": "^9.0.2"
+  }
+}

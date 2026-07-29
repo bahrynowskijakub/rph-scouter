@@ -11,8 +11,8 @@ wyśrodkowana kolumna.
 
 ```
 rph-scouter/
-├── api/            index.js — ten sam Express, wystawiony jako funkcja Vercela
 ├── backend/        Express + libSQL: proxy do RPH, trwałe dane scoutingowe
+│                   (na produkcji serwis Vercela — entrypoint to src/app.js)
 │   ├── data/
 │   │   └── scouter.db    lokalna baza dev (ignorowana w gicie); produkcja to Turso
 │   ├── scripts/

@@ -4,9 +4,14 @@ Jeden projekt na Vercelu podaje i frontend, i API. Baza to Turso. Nie ma maszyny
 systemd, nie ma certyfikatów, nie ma odwrotnego proxy — deploy to `git push`.
 
 ```
-telefon ──https──▶ Vercel ──┬── /api/*  ──▶ api/index.js (Express jako funkcja) ──▶ Turso
-                            └── resztę   ──▶ frontend/dist (CDN, wszystkie regiony)
+telefon ──https──▶ Vercel ──┬── /api/*  ──▶ serwis `backend`  (Express, src/app.js) ──▶ Turso
+                            └── resztę   ──▶ serwis `frontend` (Vite, statyki z CDN-u)
 ```
+
+Jeden projekt, dwa **[serwisy](https://vercel.com/docs/services)**. Każdy buduje się osobno
+(`frontend` Vitem, `backend` presetem Express), oba jadą w jednym deployu, pod jedną domeną
+i z jednym zestawem zmiennych środowiskowych. Ruch rozdzielają rewrite'y z górnego poziomu
+`vercel.json` — to one, i tylko one, wystawiają serwis na świat.
 
 **Jedno origin, i to nie kosmetyka.** Frontend woła `/api` relatywnie
 (`frontend/src/lib/api.ts:22`), a ciastko admina ma `sameSite: 'lax'`
@@ -15,7 +20,7 @@ i dlatego ten wariant nie wymaga *żadnej* zmiany w kodzie auth. Rozbicie na dwi
 (front na CF Worker, API na Vercelu) wymagałoby `VITE_API_URL`, CORS z credentials
 i `sameSite: 'none'` w trzech miejscach.
 
-Pliki: `vercel.json`, `api/index.js`, `backend/scripts/migrate.js`.
+Pliki: `vercel.json`, `backend/src/app.js`, `backend/scripts/migrate.js`.
 
 Poprzedni runbook — Oracle Cloud, Caddy, systemd — leży w `deploy/DEPLOY-oracle-vm.md`
 razem z `deploy/Caddyfile` i `deploy/rph-scouter.service`. Nic z tego nie jest już używane;
@@ -97,9 +102,25 @@ Powtarzaj to po każdej zmianie schematu, **przed** deployem.
 
 ## 3. Projekt na Vercelu
 
-Import repo w panelu Vercela. `vercel.json` niesie już `buildCommand`, `outputDirectory`,
-rewrite'y i region, więc w ustawieniach budowania nie ma czego zmieniać — jeśli Vercel
-zaproponuje preset Vite, zostaw, i tak nadpisze to plik.
+Import repo w panelu Vercela. Potem, w **Settings → Build and Deployment**, dwie rzeczy,
+których `vercel.json` za Ciebie nie ustawi:
+
+| ustawienie | wartość | dlaczego |
+| --- | --- | --- |
+| Framework Preset | **Services** | tryb serwisów włącza się w panelu, nie w pliku |
+| Root Directory | puste (korzeń repo) | tam leży `vercel.json`; z podkatalogu Vercel go nie zobaczy |
+
+Preset **nie** może zostać na Vite. Vite obok Services to dokładnie ten deploy, który pada na:
+
+> Project framework is set to `services`, but no services are declared.
+
+i to samo dostaniesz przy poprawnym `vercel.json`, jeśli Root Directory wskazuje `frontend`
+— plik po prostu nie zostaje wczytany. Serwisy są też funkcją za uprawnieniem (*Permissions
+Required: Services*); jeśli konto go nie ma, przełącznik nie pomoże.
+
+Reszta budowania zostaje w pliku: klucze `buildCommand`, `installCommand`, `outputDirectory`,
+`framework` i `functions` **w trybie serwisów nie są dozwolone na górnym poziomie** — każdy
+siedzi w swoim serwisie, żeby miał jednego właściciela.
 
 Environment Variables (Production **i** Preview):
 
@@ -163,6 +184,18 @@ yarn db:migrate      # domyślnie file:backend/data/scouter.db, bez tokenu
 yarn dev             # API na :4000, Vite na :5173
 ```
 
+`yarn dev` nie przechodzi przez rewrite'y — jedno origin robi tu proxy Vite'a
+(`frontend/vite.config.ts`), nie Vercel. Żeby sprawdzić sam routing serwisów bez deploya:
+
+```bash
+npx vercel dev -L   # -L = wszystko lokalnie, bez logowania do chmury
+```
+
+Wypisze `Detected services: frontend [Vite], backend [Express]` i podniesie jedno origin na
+:3000 — czyli dokładnie ten routing, który potem robi produkcja. Przy okazji dopisze
+`enableGlobalCache: false` do `.yarnrc.yml`; to robota CLI (potrzebuje node_modules bez
+odwołań do globalnego cache'u), nie Twoja zmiana — możesz ją cofnąć.
+
 `DB_URL` domyślnie wskazuje lokalny plik, więc dev nie potrzebuje ani Turso, ani sieci
 (poza pobraniem rosteru z Ravensburger Play). Ten sam klient obsługuje jedno i drugie —
 zmienia się wyłącznie URL.
@@ -192,8 +225,15 @@ turso db shell rph-scouter-restore < backup/rph-20260729.sql
 
 ## 7. Ile się tego mieści
 
-Darmowy Vercel Hobby daje 1 mln wywołań funkcji i 4 CPU-godziny miesięcznie. Statyki idą
-z CDN-u i **nie liczą się jako wywołania** — tylko `/api/*`.
+Darmowy Vercel Hobby daje 1 mln wywołań funkcji i 4 CPU-godziny miesięcznie. Statyki nie
+liczą się jako wywołania — wywołania robi tylko `/api/*`, czyli serwis `backend`.
+
+Jedna pozycja przy serwisach wygląda inaczej niż w wariancie z jedną funkcją:
+[cennik serwisów](https://vercel.com/docs/services/pricing) liczy bajty zwrócone przez serwis
+jako Fast Origin Transfer, *„whether the response is a static file or comes from a function"*.
+W praktyce dla tej aplikacji to szum — `/assets/*` jedzie z `max-age=31536000, immutable`,
+więc po pierwszym pobraniu odpowiada edge, a nie serwis. Ale to ta jedna liczba, na którą
+warto zerknąć po pierwszym turnieju, bo stary wariant miał ją zerową.
 
 | | limit / mc | dzień turniejowy (30 telefonów × 6 h) |
 | --- | --- | --- |
@@ -230,6 +270,18 @@ ciepły isolate, nie per wdrożenie. Degradują się łagodnie (najwyżej dwa id
 albo zgubione ostrzeżenie o nieudanej synchronizacji), ale nic nowego tam nie dokładaj —
 to jest dokładnie ten rodzaj stanu, który uniemożliwiał wcześniej wdrożenie SSE.
 
-**Nie zwiększaj `maxDuration` bez powodu, ale i nie zjeżdżaj poniżej 30 s.**
-`RPH_TIMEOUT_MS` to 20 s, a pierwszy odczyt nieznanego wydarzenia *czeka* na upstream —
-przy domyślnych 10 s Vercela ta jedna ścieżka kończyłaby się timeoutem.
+**Nie zjeżdżaj z `maxDuration` poniżej 30 s.** `RPH_TIMEOUT_MS` to 20 s, a pierwszy odczyt
+nieznanego wydarzenia *czeka* na upstream — poniżej 30 s ta jedna ścieżka kończy się
+timeoutem. W drugą stronę zapas jest duży: przy fluid compute domyślne 300 s obowiązuje już
+i na Hobby, więc te 30 s to celowy **sufit** na runaway, a nie podniesienie limitu.
+
+Siedzi w `services.backend.functions`, pod kluczem `src/app.js`. To nie przypadkowa ścieżka:
+cała aplikacja Express kompiluje się do *jednej* funkcji, a `functions` adresuje się wtedy
+plikiem entrypointa serwisu. Przeniesienie tego klucza na górny poziom `vercel.json` nie
+zadziała — w trybie serwisów `functions` tam nie jest dozwolone.
+
+**Nie wyrzucaj rewrite'u `/(.*)` → `/index.html` z serwisu `frontend`.** To on obsługuje
+deep linki (`/admin` po wpisaniu w pasek adresu). Wejście w serwis jest ostateczne: jak nic
+w środku nie dopasuje, Vercel **nie** wraca do pozostałych rewrite'ów z górnego poziomu,
+tylko zwraca 404 tego serwisu. Kiedyś tę robotę wykonywał rewrite górnego poziomu; teraz
+jest o jeden poziom głębiej.

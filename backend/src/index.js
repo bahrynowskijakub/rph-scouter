@@ -3,9 +3,10 @@ const { PORT, ADMIN_PASSWORD, JWT_SECRET, NODE_ENV, DB_URL } = require('./config
 const { getEventId } = require('./lib/roster');
 
 /* ───────────────────────────── the local development server ─────────────────────────────
-   In production the app is a serverless function and this file never runs — Vercel imports
-   `app.js` through api/index.js instead. Everything here exists so `yarn dev` still gives a
-   plain server on a port.
+   In production this file never runs. The backend is a Vercel service whose entrypoint is
+   `app.js` (see `services.backend` in vercel.json) — Vercel's Express support takes the
+   `module.exports = app` at the bottom of that file and wraps it as one function itself.
+   Everything here exists so `yarn dev` still gives a plain server on a port.
 
    Nothing bootstraps the schema any more either. `yarn db:migrate` does that, once, because
    a serverless cold start is a bad place to be creating tables.                          */

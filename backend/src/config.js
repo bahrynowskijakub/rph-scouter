@@ -3,6 +3,13 @@ require('dotenv').config({ path: path.resolve(__dirname, '../../.env'), quiet: t
 
 const DATA_DIR = path.resolve(__dirname, '../data');
 
+/** A typo in a duration is worse than a default: `Number('30 dni')` is NaN, and NaN days is
+ *  a cookie the browser drops on the floor without saying anything. */
+function positiveNumber(raw, fallback) {
+  const value = Number(raw);
+  return Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
 module.exports = {
   PORT: Number(process.env.PORT || 4000),
   NODE_ENV: process.env.NODE_ENV || 'development',
@@ -19,6 +26,27 @@ module.exports = {
   /** Single admin account. Password is hashed at boot; the plaintext never leaves this process. */
   ADMIN_USERNAME: process.env.ADMIN_USERNAME || 'admin',
   ADMIN_PASSWORD: process.env.ADMIN_PASSWORD || 'rph-admin',
+
+  /**
+   * The front door. One shared password handed to the people who should see the hall's
+   * decklists — no accounts, no usernames, nothing to administer between tournaments.
+   * Everything under /api stays closed until a browser has answered it.
+   *
+   * Only the bcrypt hash belongs in the environment; `yarn hash-password` prints one. A hash
+   * is safe to paste into Vercel, read off a screen or leave in a shell history, because it
+   * is not the password and cannot be turned back into it.
+   */
+  ACCESS_PASSWORD_HASH: process.env.ACCESS_PASSWORD_HASH || null,
+  /**
+   * Plaintext shortcut, hashed at boot exactly like ADMIN_PASSWORD. Only for local work —
+   * the hash above wins if both are set, and production should never use this one.
+   */
+  ACCESS_PASSWORD: process.env.ACCESS_PASSWORD || null,
+  /**
+   * How long a browser stays let in. Deliberately long: being asked again halfway through
+   * a tournament is the failure this whole thing is meant to avoid.
+   */
+  ACCESS_TTL_DAYS: positiveNumber(process.env.ACCESS_TTL_DAYS, 180),
 
   JWT_SECRET: process.env.JWT_SECRET || 'dev-only-insecure-secret-change-me',
   JWT_TTL: process.env.JWT_TTL || '30d',

@@ -9,6 +9,16 @@ const router = express.Router();
 // Hash the configured password once at boot; the comparison below is then constant-time.
 const ADMIN_HASH = bcrypt.hashSync(ADMIN_PASSWORD, 10);
 
+/**
+ * The committed default is not a password, and in production it must not open anything.
+ *
+ * index.js refuses to boot on it, but index.js does not run on Vercel — there the entrypoint
+ * is app.js, so the check has to be on the request path to exist at all. Same lesson as
+ * `insecure_secret` in middleware/access.js: a guard at a boot that never happens is not a
+ * guard. Local development keeps working on the default, which is the point of having one.
+ */
+const ADMIN_PASSWORD_IS_DEFAULT = NODE_ENV === 'production' && ADMIN_PASSWORD === 'rph-admin';
+
 const cookieOptions = {
   httpOnly: true,
   sameSite: 'lax',
@@ -17,6 +27,13 @@ const cookieOptions = {
 };
 
 router.post('/login', async (req, res) => {
+  if (ADMIN_PASSWORD_IS_DEFAULT) {
+    return res.status(503).json({
+      error: 'ADMIN_PASSWORD is still the committed default. Set it and redeploy.',
+      code: 'admin_unconfigured',
+    });
+  }
+
   const { username, password } = req.body || {};
 
   const userOk = String(username || '') === ADMIN_USERNAME;

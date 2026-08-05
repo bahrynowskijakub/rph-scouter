@@ -1,7 +1,8 @@
 import { Route, Routes } from 'react-router-dom';
-import { useEventName } from '@/lib/hooks';
+import { useAccess, useEventName } from '@/lib/hooks';
 import RosterPage from '@/features/roster/RosterPage';
 import AdminPage from '@/features/admin/AdminPage';
+import AccessGate from '@/features/access/AccessGate';
 import NotFoundPage from '@/features/NotFoundPage';
 
 /**
@@ -38,6 +39,26 @@ function TopBar() {
 }
 
 export default function App() {
+  const { data: access, isPending } = useAccess();
+
+  // Nothing, not a skeleton. This is the first request of a cold visit and it either says
+  // "type the password" or "here is the roster" — a shimmer of one before the other would be
+  // a screen that changes its mind. A returning phone never reaches this branch: its
+  // localStorage hint seeds `access` before the first render (see `useAccess`).
+  if (isPending) return <div className="shell" />;
+
+  if (!access?.granted) {
+    // The gate stands alone — no topbar. The header reads the roster cache, and nothing has
+    // any business fetching a roster on the wrong side of the front door.
+    return (
+      <div className="shell">
+        <main style={{ flex: 1 }}>
+          <AccessGate configured={access?.configured ?? true} problem={access?.reason} />
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="shell">
       <TopBar />

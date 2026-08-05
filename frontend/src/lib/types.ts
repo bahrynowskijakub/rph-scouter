@@ -1,5 +1,23 @@
 export type InkId = 'amber' | 'amethyst' | 'emerald' | 'ruby' | 'sapphire' | 'steel';
 
+/** Why a deploy has no usable gate. Only the owner can act on any of them. */
+export type AccessProblem =
+  | 'missing_hash'
+  | 'bad_hash'
+  | 'plaintext_password'
+  | 'insecure_secret';
+
+/**
+ * GET /api/access/status — the front door, and the only thing the app may ask before it has
+ * been let in. `configured` is false when there is no password to type because the deploy is
+ * misconfigured and the API is refusing everything; `reason` says which way.
+ */
+export interface AccessState {
+  granted: boolean;
+  configured: boolean;
+  reason?: AccessProblem;
+}
+
 /** What a scout files: the deck's inks and a free-text description. Nothing else. */
 export interface ScoutingReport {
   inks: InkId[];

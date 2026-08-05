@@ -9,8 +9,9 @@ telefon ──https──▶ Caddy :443 ──┬── /api/*  ──▶ Node :
 ```
 
 Caddy jest tym, co robi z dwóch procesów jedno origin. To nie kosmetyka: frontend woła
-`/api` relatywnie (`frontend/src/lib/api.ts:22`), a ciastko admina ma `sameSite: 'lax'`
-(`backend/src/routes/auth.js:14`). Rozdzielenie frontu i backendu na dwie domeny wymagałoby
+`/api` relatywnie (`request()` w `frontend/src/lib/api.ts`), a ciastka bramki i admina mają
+`sameSite: 'lax'` (`accessCookieOptions` w `backend/src/middleware/access.js`, `cookieOptions`
+w `backend/src/routes/auth.js`). Rozdzielenie frontu i backendu na dwie domeny wymagałoby
 zmian w obu tych miejscach; jeden reverse proxy nie wymaga żadnej.
 
 Pliki: `deploy/rph-scouter.service`, `deploy/Caddyfile`, `deploy/rph-scouter.env.example`,
@@ -108,9 +109,12 @@ Rekord `A` z domeny na zarezerwowany IP. Cloudflare jako DNS jest w porządku:
 Nie masz domeny? Darmowa subdomena z DuckDNS przechodzi wyzwanie HTTP-01 Caddy'ego bez
 żadnej dodatkowej konfiguracji.
 
-**HTTPS nie jest opcjonalne.** `backend/src/routes/auth.js:15` ustawia ciastko z
-`secure: true`, kiedy `NODE_ENV=production`. Po czystym HTTP przeglądarka po prostu go nie
-zapisze i logowanie na `/admin` będzie się odbijać **bez żadnego komunikatu o błędzie**.
+**HTTPS nie jest opcjonalne.** Przy `NODE_ENV=production` `secure: true` dostają **oba**
+ciastka — bramki (`accessCookieOptions` w `backend/src/middleware/access.js`) i admina
+(`cookieOptions` w `backend/src/routes/auth.js`). Po czystym HTTP przeglądarka ich nie zapisze,
+więc odbijać się będzie nie tylko logowanie na `/admin`, ale **wspólne hasło dla wszystkich** —
+i w obu przypadkach **bez żadnego komunikatu o błędzie**. Aplikacja po HTTP jest niedostępna,
+nie „mniej bezpieczna”.
 
 ---
 
@@ -157,18 +161,30 @@ sudo -u rph git clone git@github.com:<ty>/rph-scouter.git /srv/rph-scouter
 
 ```bash
 sudo cp /srv/rph-scouter/deploy/rph-scouter.env.example /etc/rph-scouter.env
-sudo nano /etc/rph-scouter.env        # ADMIN_PASSWORD, JWT_SECRET, CORS_ORIGIN
+sudo nano /etc/rph-scouter.env        # ACCESS_PASSWORD_HASH, ADMIN_PASSWORD, JWT_SECRET, CORS_ORIGIN
 openssl rand -hex 32                  # do JWT_SECRET
 
 sudo chown root:rph /etc/rph-scouter.env
 sudo chmod 640 /etc/rph-scouter.env
 ```
 
-Backend **odmówi startu**, jeśli zostawisz domyślne `ADMIN_PASSWORD` albo `JWT_SECRET`
-(`backend/src/index.js:9-16`) — to twój test, że plik doszedł.
+`ACCESS_PASSWORD_HASH` **wygeneruj u siebie na maszynie** (`yarn hash-password` w klonie repo)
+i przenieś gotową wartość. Na serwerze ta komenda w tym momencie nie zadziała: repo jest tu
+dopiero po `git clone` z kroku 4, a `yarn install` robi `scripts/deploy.sh` dopiero w kroku 7 —
+Yarn 4 nie uruchomi skryptu bez stanu instalacji, a sam skrypt zaczyna od `require('bcryptjs')`,
+którego jeszcze nie ma na dysku. Po kroku 7 zadziała i tu.
 
-Hasło bierz w cudzysłów. `EnvironmentFile` systemd traktuje niezacytowany `#` jak dotenv,
-czyli jako początek komentarza — dokładnie ta pułapka, przed którą ostrzega README.
+Backend **odmówi startu**, jeśli zostawisz domyślne `ADMIN_PASSWORD` albo `JWT_SECRET`, albo
+jeśli `ACCESS_PASSWORD_HASH` będzie brakować bądź nie będzie hashem bcrypta
+(`backend/src/index.js`) — to twój test, że plik doszedł. Bez wspólnego hasła API i tak
+odpowiadałoby 503 na wszystko poza `/api/health` i `/api/access/*`, więc lepiej dowiedzieć się
+o tym z `journalctl` niż z ekranu listy.
+
+Hasło admina bierz w cudzysłów — **dla dotenv**, nie dla systemd. Sprawdzone na systemd 255
+(czyli Ubuntu 24.04 z tego przewodnika): w `EnvironmentFile` komentarzem jest tylko `#` na
+**początku linii**, `#` w środku wartości zostaje w niej dosłownie, a `$` nie jest rozwijany.
+Cudzysłowy systemd zdejmuje, więc są nieszkodliwe i czytelne — ale pułapka z niezacytowanym
+`#`, przed którą ostrzega README, dotyczy `.env` czytanego przez dotenv, nie tego pliku.
 
 **Nie kładź na serwerze `.env`.** `backend/src/config.js:2` woła dotenv na katalogu repo;
 dotenv nie nadpisze zmiennych, które systemd już ustawił, ale poda każdą, której tam nie
@@ -220,8 +236,11 @@ Każdy kolejny deploy to ta sama jedna komenda.
 
 Ta aplikacja ma ścieżki, które widać tylko na żywym ruchu z dwóch telefonów:
 
+- [ ] `/` w świeżej karcie pyta o wspólne hasło; złe → „Nieprawidłowe hasło.”, dobre → lista
+- [ ] zamknij kartę i wejdź ponownie → **żadnego pytania o hasło** (jeśli pyta za każdym
+      razem: sprawdź, czy naprawdę jesteś na HTTPS — bez niego ciastko nie zostaje zapisane)
 - [ ] `/` rysuje listę, chip turnieju ma nazwę wydarzenia
-- [ ] `/admin` — logowanie przechodzi (jeśli nie: sprawdź, czy naprawdę jesteś na HTTPS)
+- [ ] `/admin` — bramka, a za nią logowanie admina; oba przechodzą
 - [ ] admin ustawia ID wydarzenia, lista się przełącza — wszystkie otwarte telefony w ciągu
       jednego tyknięcia pollingu (delta niesie `eventId`, więc same się orientują)
 - [ ] **dwa telefony**: zapis decka na jednym pojawia się na drugim w ≤5 s bez odświeżania
@@ -234,9 +253,19 @@ Ta aplikacja ma ścieżki, które widać tylko na żywym ruchu z dwóch telefon�
       powrót do sieci → lista dogania się sama, bez przeładowania
 - [ ] `sudo /srv/rph-scouter/scripts/deploy.sh` podczas patrzenia na listę → telefony
       dogadzają się same, bez komunikatu o błędzie (nieudane tyknięcie to tylko tyknięcie)
-- [ ] `curl -s "https://twoja-domena/api/participants/delta?since=0"` → JSON z `cursor`,
-      a nie `stale` przy każdym wywołaniu
+- [ ] `curl -s https://twoja-domena/api/participants` → `401` z `access_required`; goły `curl`
+      **nie ma** przechodzić, bo bramka jest w API, nie w ekranie
 - [ ] `curl -sI https://twoja-domena/ | grep -i robots` → `noindex, nofollow`
+
+Ostatni curl potrzebuje passa — `$H` to wspólne hasło:
+
+```bash
+curl -s -c /tmp/rph.jar -X POST https://twoja-domena/api/access/login \
+  -H 'Content-Type: application/json' -d "{\"password\":\"$H\"}"   # → {"granted":true,…}
+```
+
+- [ ] `curl -s -b /tmp/rph.jar "https://twoja-domena/api/participants/delta?since=0"` → JSON
+      z `cursor`, a nie `stale` przy każdym wywołaniu
 
 ---
 

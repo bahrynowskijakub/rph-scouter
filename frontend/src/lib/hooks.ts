@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { api } from './api';
+import { ACCESS_KEY, readAccessHint, syncAccessHint } from './access';
 import type { Participant, RosterDelta, RosterState, ScoutingInput } from './types';
 
 export const keys = {
@@ -9,6 +10,8 @@ export const keys = {
   event: ['event'] as const,
   me: ['me'] as const,
   history: ['history'] as const,
+  // Lives in access.ts because the fetch wrapper writes to it from outside React.
+  access: ACCESS_KEY,
 };
 
 /* ───────────────────────────── offline roster snapshot ─────────────────────────────
@@ -376,6 +379,43 @@ export function useClearScouting() {
     mutationFn: ({ id }: { id: number }) => api.scouting.clear(id),
     onSuccess: ({ participant, cursor }) => patch(participant, cursor),
   });
+}
+
+/* ──────────────────────────────────── the gate ──────────────────────────────────── */
+
+/**
+ * Whether this browser has typed the shared password. Wraps the whole app, so it is the first
+ * request of every visit and nothing else is allowed to depend on it.
+ *
+ * The localStorage hint is seeded as `initialData` dated to the epoch: a returning phone paints
+ * the roster in the first frame and this revalidates behind it. Two consequences worth knowing:
+ * a hint that has gone stale shows the app for one round trip before the screen drops back
+ * (harmless — no request it makes can succeed), and a browser that is offline keeps the app,
+ * which is the point, because the roster snapshot beside it is still worth reading in a hall
+ * with no wifi.
+ */
+export function useAccess() {
+  const [hint] = useState(readAccessHint);
+
+  const query = useQuery({
+    queryKey: keys.access,
+    queryFn: api.access.status,
+    staleTime: 5 * 60_000,
+    /**
+     * `always`, because the default `online` does not fail an offline fetch — it *pauses* it,
+     * leaving the query pending for as long as the browser has no connection. Every screen in
+     * this app is allowed to wait for a paused query; this one is not, because the app renders
+     * nothing until it resolves. Offline with no hint would have been a blank page forever.
+     */
+    networkMode: 'always',
+    ...(hint
+      ? { initialData: { granted: true, configured: true }, initialDataUpdatedAt: 0 }
+      : {}),
+  });
+
+  useEffect(() => syncAccessHint(query.data), [query.data]);
+
+  return query;
 }
 
 /* ──────────────────────────────────── admin ──────────────────────────────────── */

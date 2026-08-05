@@ -16,7 +16,8 @@ rph-scouter/
 │   ├── data/
 │   │   └── scouter.db    lokalna baza dev (ignorowana w gicie); produkcja to Turso
 │   ├── scripts/
-│   │   └── migrate.js    schemat i seed — raz na deploy, nie przy starcie
+│   │   ├── migrate.js         schemat i seed — raz na deploy, nie przy starcie
+│   │   └── hash-password.js   hash wspólnego hasła do .env / Vercela
 │   └── src/
 └── frontend/       Vite + React + TypeScript + Tailwind v4
 ```
@@ -37,8 +38,14 @@ yarn dev          # API na :4000, frontend na :5173
 Frontend proxuje `/api` na backend, więc przeglądarka widzi jedno origin.
 
 Domyślnie działa bez żadnej konfiguracji. Przed prawdziwym turniejem skopiuj
-`.env.example` do `.env` i ustaw przynajmniej `ADMIN_PASSWORD` oraz `JWT_SECRET`
-(w `NODE_ENV=production` backend odmówi startu na domyślnych wartościach).
+`.env.example` do `.env` i ustaw przynajmniej `ACCESS_PASSWORD_HASH`, `ADMIN_PASSWORD`
+oraz `JWT_SECRET` (w `NODE_ENV=production` backend odmówi startu bez nich).
+
+Wspólne hasło generuje się tak:
+
+```bash
+yarn hash-password       # wpisz hasło, dostaniesz linijkę ACCESS_PASSWORD_HASH='$2b$10$…'
+```
 
 **Hasło w `.env` bierz w cudzysłów.** dotenv traktuje niezacytowany `#` jako początek
 komentarza, więc `ADMIN_PASSWORD=tajne#1` dojeżdża do backendu jako `tajne` i każde
@@ -46,17 +53,81 @@ logowanie odbija się bez żadnej wskazówki dlaczego. `.env` nie jest też obse
 `node --watch` — po jego zmianie backend trzeba zrestartować ręcznie.
 
 Inne skrypty: `yarn build` (produkcyjny build frontu), `yarn typecheck`, `yarn start`
-(sam backend).
+(sam backend), `yarn hash-password`.
+
+## Wspólne hasło
+
+Cała aplikacja stoi za jednym hasłem, o które pyta się **raz na urządzenie**. Nie ma kont,
+maili ani rejestracji: lista to cudze nazwiska i notatki o tym, kto czym gra, a formularz
+rejestracyjny przy stole, na którym czeka rozpoczęta runda, nikt nigdy nie wypełni. Hasło
+rozdaje organizator tym, którzy mają widzieć listę.
+
+**Hashowanie jest po stronie serwera i nie da się inaczej.** Przeglądarka wysyła hasło
+jawnie po TLS, a backend porównuje je z hashem ze zmiennej środowiskowej przez
+`bcrypt.compare`. Kuszący wariant „zahashuj w przeglądarce i porównaj dwa hashe” nie działa
+z dwóch niezależnych powodów: bcrypt soli każdy hash, więc to samo hasło hashuje się za
+każdym razem na inny string i `hash(wpisane) === zapisany` jest **fałszem także dla
+poprawnego hasła**; a poza tym drzwi otwiera to, co klient przysyła — hash liczony po
+stronie klienta byłby więc po prostu nową nazwą hasła, do podsłuchania i odtworzenia tak
+samo. W środowisku leży wyłącznie hash (`ACCESS_PASSWORD_HASH`), którego nie da się
+odwrócić; plaintext nie jest zapisany nigdzie.
+
+Pass to podpisane ciasteczko `rph_access` — `httpOnly`, `SameSite=Lax`, `Secure` na
+produkcji, 180 dni. Niesie odcisk hasła (HMAC na `JWT_SECRET`), więc **zmiana hasła
+unieważnia wszystkie stare wejścia**; bez tego rotacja hasła (bo ktoś odszedł z ekipy, bo
+wpadło na grupę) nie wyrzuciłaby nikogo przez następne pół roku. HMAC, a nie zwykły skrót
+hasha, z dwóch powodów: skrót solonego hasha zmieniał się przy każdym starcie procesu na
+ścieżce `ACCESS_PASSWORD` (czyli pod `node --watch` przy każdym zapisie pliku), a odcisk
+jedzie do przeglądarki w tokenie, więc nie ma być skrótem hasła do łamania offline.
+
+Zepsuta konfiguracja **zamyka API**, nie otwiera go: 503 `access_unconfigured` na wszystkim
+poza `/api/health` i `/api/access/*` (te dwa muszą odpowiadać, bo właśnie z nich front
+dowiaduje się, co jest zepsute), plus odmowa startu w wariancie z VM-ki. Nazwane przypadki:
+brak hasha, hash o złym kształcie, plaintext `ACCESS_PASSWORD` na produkcji — i **domyślny
+`JWT_SECRET`**, bo pass jest niepodrabialny tylko dzięki temu sekretowi, a w repo leży
+wartość zastępcza. Wszystkie cztery sprawdzane są na ścieżce żądania, nie przy starcie:
+`index.js` na Vercelu się nie uruchamia (entrypointem jest `app.js`), więc kontrola przy
+boocie tam po prostu nie istnieje. Lokalnie odwrotnie — brak hasła to brak bramki,
+`yarn dev` działa jak działał.
+
+Ekran bramki nie mruga u tych, którzy już weszli: w `localStorage` zostaje notka
+(`rph-scouter:access`), na której front rysuje aplikację od pierwszej klatki i dopiero za
+nią potwierdza pass u serwera — dokładnie tak, jak snapshot listy. Podrobienie notki nic nie
+daje, bo każde żądanie i tak leci z ciasteczkiem albo dostaje 401 `access_required`, po
+którym ekran wraca sam.
+
+**Nieudane** próby są liczone (20 na 10 minut), a poprawne hasło czyści licznik. To nie
+kosmetyka: cała ekipa na sali siedzi za jednym NAT-em, więc gdyby liczyły się wszystkie próby,
+dwudziesty telefon wpisujący *poprawne* hasło na starcie turnieju dostałby „Za dużo prób.”
+i dziesięć minut ciszy.
+
+Adres bierzemy z **prawego** końca `X-Forwarded-For`, nie z lewego. Lewy pisze klient, a Caddy
+dokleja prawdziwy peer na końcu tego, co przyszło — więc skrypt podsyłający świeży nagłówek
+przy każdym żądaniu miałby świeży limit i limiter nie limitowałby nikogo. `req.ip` też nie
+zadziała: bez `trust proxy` to adres proxy (jeden licznik na całą salę), a z nim — ten sam
+lewy koniec pisany przez klienta.
+
+Licznik siedzi w pamięci procesu, więc na serverless jest per instancja i najlepiej rozumieć
+go jako podniesienie kosztu, nie mur; prawdziwym hamulcem jest samo bcrypt, czyli ~100 ms CPU
+na każdą próbę.
 
 ## Role
 
-**Odwiedzający** — bez logowania: widzi listę zawodników, szuka i **może oznaczać decki**.
-To celowe: scouting robi cała ekipa, nie jedna osoba.
+**Odwiedzający** — po wpisaniu wspólnego hasła, bez żadnego konta: widzi listę zawodników,
+szuka i **może oznaczać decki**. To celowe: scouting robi cała ekipa, nie jedna osoba.
 
-**Admin** — jeden użytkownik, wchodzi przez `/admin`. Samo wejście na ten route jest
-logowaniem; nigdzie w UI nie ma przycisku „Zaloguj”, więc zwykły gość nawet nie wie, że
-jest tu konto. Admin ustawia ID wydarzenia, wymusza odświeżenie listy i widzi historię
-zmian.
+**Admin** — jeden użytkownik, wchodzi przez `/admin` (za bramką, jak wszystko). Samo wejście
+na ten route jest logowaniem; nigdzie w UI nie ma przycisku „Zaloguj”, więc zwykły gość nawet
+nie wie, że jest tu konto. Admin ustawia ID wydarzenia, wymusza odświeżenie listy i widzi
+historię zmian.
+
+Oba ciasteczka podpisuje ten sam `JWT_SECRET`, więc każde z nich sprawdza swoje `role`/`typ`
+— inna nazwa ciasteczka nie jest granicą, twierdzenie w tokenie jest. Pass admina zalicza
+się jako pass bramki (admin dowiódł więcej), ale nie odwrotnie.
+
+Domyślne `ADMIN_PASSWORD` na produkcji nie wpuszcza do `/admin` (503 `admin_unconfigured`) —
+z tego samego powodu, dla którego domyślny `JWT_SECRET` zamyka bramkę: `index.js`, który miał
+tego pilnować przy starcie, na Vercelu nie jest uruchamiany.
 
 Zapisy nie mają już pola „twój nick” — sheet ma tylko atramenty i opis — więc w
 `scouting_history` autorstwo sprowadza się do kolumny `actor` (`visitor` albo `admin`).
@@ -374,7 +445,16 @@ w usuniętym pliku.
 
 ## API
 
-Publiczne:
+Bez hasła, bo inaczej nie dałoby się o nie zapytać:
+
+| Metoda | Ścieżka | Opis |
+| --- | --- | --- |
+| GET | `/api/health` | `{ ok: true }` — smoke test |
+| GET | `/api/access/status` | `{ granted, configured }` — pierwsze żądanie każdej wizyty |
+| POST | `/api/access/login` | `{ password }` → ciastko `rph_access` |
+| POST | `/api/access/logout` | zapomnij to urządzenie (bez UI) |
+
+Za wspólnym hasłem — wszystko poniżej odpowiada `401 access_required` bez ciastka:
 
 | Metoda | Ścieżka | Opis |
 | --- | --- | --- |
@@ -388,8 +468,10 @@ Publiczne:
 | GET | `/api/archetypes` | presety archetypów — bez UI |
 | GET | `/api/stats` | rozkład par atramentów, archetypów, tech kart — bez UI |
 
-Tylko admin: `PUT /api/event`, `GET /api/event/lookup/:id`,
-`POST|DELETE /api/archetypes`, `GET /api/scouting/history/all`.
+Dodatkowo tylko admin: `PUT /api/event`, `GET /api/event/lookup/:id`,
+`POST|DELETE /api/archetypes`, `GET /api/scouting/history/all`. Logowanie admina
+(`/api/auth/*`) też jest za bramką — organizator wpisuje wspólne hasło jak każdy, a w zamian
+nikt bez niego nie dobije się nawet do `POST /api/auth/login`, żeby je młócić.
 
 Każdy zapis i każde czyszczenie trafia do `scouting_history` — przy publicznym zapisie
 kolumna `actor` to jedyny ślad, kto co zmienił.

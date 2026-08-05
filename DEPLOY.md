@@ -13,9 +13,10 @@ Jeden projekt, dwa **[serwisy](https://vercel.com/docs/services)**. Każdy buduj
 i z jednym zestawem zmiennych środowiskowych. Ruch rozdzielają rewrite'y z górnego poziomu
 `vercel.json` — to one, i tylko one, wystawiają serwis na świat.
 
-**Jedno origin, i to nie kosmetyka.** Frontend woła `/api` relatywnie
-(`frontend/src/lib/api.ts:22`), a ciastko admina ma `sameSite: 'lax'`
-(`backend/src/routes/auth.js:14`). Dlatego front i API muszą siedzieć pod jedną domeną —
+**Jedno origin, i to nie kosmetyka.** Frontend woła `/api` relatywnie (`request()`
+w `frontend/src/lib/api.ts`), a ciastka — bramki i admina — mają `sameSite: 'lax'`
+(`accessCookieOptions` w `backend/src/middleware/access.js`, `cookieOptions`
+w `backend/src/routes/auth.js`). Dlatego front i API muszą siedzieć pod jedną domeną —
 i dlatego ten wariant nie wymaga *żadnej* zmiany w kodzie auth. Rozbicie na dwie domeny
 (front na CF Worker, API na Vercelu) wymagałoby `VITE_API_URL`, CORS z credentials
 i `sameSite: 'none'` w trzech miejscach.
@@ -128,19 +129,45 @@ Environment Variables (Production **i** Preview):
 | --- | --- |
 | `DB_URL` | `libsql://rph-scouter-<org>.turso.io` |
 | `DB_AUTH_TOKEN` | token z kroku 1 |
+| `ACCESS_PASSWORD_HASH` | wynik `yarn hash-password` (**bez tego deploy nie serwuje nic**) |
 | `ADMIN_USERNAME` | `admin` |
-| `ADMIN_PASSWORD` | prawdziwe hasło |
-| `JWT_SECRET` | `openssl rand -hex 32` |
+| `ADMIN_PASSWORD` | prawdziwe hasło (na domyślnym `/admin` nie wpuści) |
+| `JWT_SECRET` | `openssl rand -hex 32` (**bez tego deploy też nie serwuje nic**) |
 | `NODE_ENV` | `production` |
 | `DEFAULT_EVENT_ID` | `767473` (albo Twoje) |
 
 `CORS_ORIGIN` **nie jest potrzebne** — front i API dzielą origin, więc żądanie nigdy nie
 jest cross-origin. Zostaw niewypełnione.
 
-`NODE_ENV=production` włącza `secure: true` na ciastku admina. Vercel daje HTTPS z pudełka,
-więc to po prostu zadziała — ale gdybyś kiedykolwiek wystawił to po czystym HTTP,
-przeglądarka nie zapisze ciastka i logowanie na `/admin` będzie się odbijać **bez żadnego
-komunikatu o błędzie**.
+`ACCESS_PASSWORD_HASH` to wspólne hasło do całej aplikacji — patrz „Wspólne hasło”
+w `README.md`. Hash generujesz lokalnie (`yarn hash-password`) i wklejasz **sam hash**;
+hasło rozdajesz ludziom osobno. W panelu Vercela wklejaj wartość **bez apostrofów** —
+apostrofy z `.env` są składnią powłoki, nie częścią wartości, a w polu formularza stałyby się
+częścią hasha. Backend to wyłapuje: sprawdza kształt hasha przy starcie, więc zamiast
+poprawnego hasła odbijającego się jako „Nieprawidłowe hasło.” zobaczysz ekran **„Hash hasła
+jest zepsuty”**, który mówi wprost, o co chodzi.
+
+Zmienna, która nie dojechała, nie znaczy „bez bramki”. Każdy endpoint poza `/api/health`
+i `/api/access/*` odpowiada wtedy 503 `access_unconfigured` — te dwa muszą odpowiadać, bo
+właśnie ze `/api/access/status` front dowiaduje się, **którą** zmienną masz zepsutą, i to on
+rysuje ten ekran. Nazwane przypadki: `missing_hash`, `bad_hash`, `plaintext_password`
+(na produkcji `ACCESS_PASSWORD` nie jest przyjmowane) i `insecure_secret`.
+
+Ten ostatni jest ważny: **brak `JWT_SECRET` też zamyka bramkę**. Pass jest niepodrabialny
+tylko dlatego, że ten sekret jest sekretem, a w repo leży wartość domyślna — bez tej kontroli
+zapomniany `JWT_SECRET` dałby bramkę, do której każdy wystawia sobie pass sam, bez żadnego
+objawu. Odmowa startu w `index.js` tu nie wystarcza, bo **na Vercelu `index.js` się nie
+uruchamia** — entrypointem jest `app.js`. Kontrola siedzi więc na ścieżce żądania.
+
+Rotacja hasła (ktoś odszedł z ekipy, hasło wypłynęło): podmień `ACCESS_PASSWORD_HASH`
+i zredeployuj. Pass niesie odcisk hasła, więc **wszystkie telefony pytane są od nowa** —
+nie ma osobnej listy sesji do czyszczenia. Uwaga: odcisk jest HMAC-iem na `JWT_SECRET`, więc
+podmiana samego sekretu też wyrzuca wszystkich.
+
+`NODE_ENV=production` włącza `secure: true` na obu ciastkach — bramki i admina. Vercel daje
+HTTPS z pudełka, więc to po prostu zadziała — ale gdybyś kiedykolwiek wystawił to po czystym
+HTTP, przeglądarka nie zapisze ciastka i **zarówno bramka, jak i logowanie na `/admin` będą
+się odbijać bez żadnego komunikatu o błędzie**.
 
 ---
 
@@ -153,8 +180,11 @@ git push          # każdy push na main to deploy
 Ta aplikacja ma ścieżki, które widać tylko na żywym ruchu z dwóch telefonów. Zrób to
 **tydzień przed turniejem, nie w dniu**:
 
+- [ ] `/` w świeżej karcie (albo incognito) pyta o wspólne hasło, a nie rysuje listę
+- [ ] złe hasło → „Nieprawidłowe hasło.”, dobre → lista pojawia się od razu
+- [ ] **zamknij kartę, wejdź ponownie** → żadnego pytania o hasło, lista w pierwszej klatce
 - [ ] `/` rysuje listę, chip turnieju ma nazwę wydarzenia
-- [ ] `/admin` — logowanie przechodzi
+- [ ] `/admin` — bramka, a za nią logowanie admina; oba przechodzą
 - [ ] admin ustawia ID wydarzenia, lista się przełącza — wszystkie otwarte telefony w ciągu
       jednego tyknięcia pollingu (delta niesie `eventId`, więc same się orientują)
 - [ ] **dwa telefony**: zapis decka na jednym pojawia się na drugim w ≤5 s bez odświeżania
@@ -165,12 +195,23 @@ Ta aplikacja ma ścieżki, które widać tylko na żywym ruchu z dwóch telefon�
       (to `rosterSyncedAt`, nie kursor)
 - [ ] tryb samolotowy → wejście na listę pokazuje snapshot z paskiem „zapisana kopia";
       powrót do sieci → lista dogania się sama, bez przeładowania
-- [ ] `curl -s "https://twoja-domena/api/participants/delta?since=0"` → JSON z `cursor`,
-      a nie `stale` przy każdym wywołaniu
+- [ ] `curl -s https://twoja-domena/api/participants` → `401` z `access_required`
+      (goły `curl` **nie ma** przechodzić — bramka jest w API, nie w ekranie)
+
+Curle, które sięgają do API, muszą nieść pass, więc najpierw go zdobądź (`$H` to wspólne
+hasło). Ten jeden nie potrzebuje niczego — jest przed bramką:
+
+```bash
+curl -s -c /tmp/rph.jar -X POST https://twoja-domena/api/access/login \
+  -H 'Content-Type: application/json' -d "{\"password\":\"$H\"}"   # → {"granted":true,…}
+```
+
+- [ ] `curl -s -b /tmp/rph.jar "https://twoja-domena/api/participants/delta?since=0"` → JSON
+      z `cursor`, a nie `stale` przy każdym wywołaniu
 - [ ] `curl -sI https://twoja-domena/ | grep -i robots` → `noindex, nofollow`
-- [ ] `curl -sI https://twoja-domena/api/participants | grep -i cache` → `no-cache`
-      (**nie** `no-store` — gdyby było `no-store`, reguła nagłówków z `vercel.json`
-      nadpisuje trasy i psuje 304-ki na liście)
+- [ ] `curl -sI -b /tmp/rph.jar https://twoja-domena/api/participants | grep -i cache` →
+      `no-cache` (**nie** `no-store` — gdyby było `no-store`, reguła nagłówków z
+      `vercel.json` nadpisuje trasy i psuje 304-ki na liście)
 
 ---
 

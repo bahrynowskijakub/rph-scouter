@@ -1,4 +1,6 @@
+import { accessEpoch, revokeAccess } from './access';
 import type {
+  AccessState,
   EventMeta,
   EventState,
   HistoryEntry,
@@ -10,14 +12,21 @@ import type {
 
 export class ApiError extends Error {
   status: number;
-  constructor(message: string, status: number) {
+  /** The backend's own label for the failure, where it has one — `access_required` and friends. */
+  code?: string;
+  constructor(message: string, status: number, code?: string) {
     super(message);
     this.status = status;
+    this.code = code;
   }
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response;
+  // Read before the request goes out, so a 401 that lands after somebody has since typed the
+  // password can be recognised as belonging to the previous, already-abandoned session.
+  const issuedAt = accessEpoch();
+
   try {
     res = await fetch(`/api${path}`, {
       ...init,
@@ -45,15 +54,34 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
 
   if (!res.ok) {
-    const message =
-      (body as { error?: string } | null)?.error || `Request failed (${res.status})`;
-    throw new ApiError(message, res.status);
+    const failure = body as { error?: string; code?: string } | null;
+    const message = failure?.error || `Request failed (${res.status})`;
+
+    // The pass ran out, or the shared password was changed. Whatever this call was, the answer
+    // is the password screen — put it up here rather than letting every caller learn to.
+    if (failure?.code === 'access_required') revokeAccess(issuedAt);
+
+    throw new ApiError(message, res.status, failure?.code);
   }
 
   return body as T;
 }
 
 export const api = {
+  /**
+   * The front door. `status` is the one call the app may make before it has been let in —
+   * everything else under /api answers 401 until `login` has set the cookie.
+   */
+  access: {
+    status: () => request<AccessState>('/access/status'),
+    login: (password: string) =>
+      request<{ granted: true; days: number }>('/access/login', {
+        method: 'POST',
+        body: JSON.stringify({ password }),
+      }),
+    logout: () => request<{ ok: true }>('/access/logout', { method: 'POST' }),
+  },
+
   /** The whole roster screen in one round trip: tournament name plus every player. */
   roster: {
     get: () => request<RosterState>('/participants'),

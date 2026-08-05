@@ -93,11 +93,28 @@ DB_AUTH_TOKEN="<token>" \
 yarn db:migrate
 ```
 
-Powinno wypisać `schema up to date` i `seeded 17 archetype presets`. Skrypt jest
-idempotentny — puszczenie go drugi raz nic nie psuje, a seed wchodzi tylko do pustej tabeli,
-więc nie nadpisze archetypów dodanych później przez admina.
+Powinno wypisać `schema up to date` i linijkę `archetypes: N presets synced, … kept from
+scouts`. Skrypt jest idempotentny — puszczenie go drugi raz nic nie psuje.
 
-Powtarzaj to po każdej zmianie schematu, **przed** deployem.
+Presety archetypów **synchronizują się przy każdym przebiegu**: lista z `backend/src/lib/seed.js`
+nadpisuje wiersze `source='seed'` i usuwa te, których już na niej nie ma, a wiersze
+`source='user'` — czyli archetypy dopisane w sheecie przez ekipę — zostają nietknięte. To
+jednocześnie sposób na odświeżenie listy po zmianach w mecie: podmień `seed.js`, puść
+`yarn db:migrate`, zredeployuj.
+
+Pierwszy przebieg po tej zmianie robi dwie rzeczy jednorazowo i wypisze je osobnymi linijkami:
+
+- `archetypes.source added` — dokłada kolumnę i **klasyfikuje starą zawartość tabeli**: cokolwiek
+  nie należało do poprzedniej listy seedowej zostaje oznaczone jako `user`, żeby archetyp dodany
+  kiedyś przez admina nie zniknął jako wycofany preset.
+- `archetypes rebuilt with UNIQUE (name, inks)` — przebudowuje tabelę, bo nazwy przestały nieść
+  parę kolorów, a „Midrange" należy do czterech par. SQLite nie umie zdjąć `UNIQUE`, więc jest to
+  kopiuj-i-przemianuj; wszystko przechodzi razem z `source`.
+
+Oba kroki są jednorazowe — kolejne przebiegi wypiszą już tylko `schema up to date` i linijkę
+z synchronizacją.
+
+Powtarzaj to po każdej zmianie schematu **lub listy presetów**, i zawsze **przed** deployem.
 
 ---
 

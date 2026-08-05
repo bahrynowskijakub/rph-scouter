@@ -16,9 +16,10 @@ rph-scouter/
 │   ├── data/
 │   │   └── scouter.db    lokalna baza dev (ignorowana w gicie); produkcja to Turso
 │   ├── scripts/
-│   │   ├── migrate.js         schemat i seed — raz na deploy, nie przy starcie
+│   │   ├── migrate.js         schemat + synchronizacja presetów archetypów
 │   │   └── hash-password.js   hash wspólnego hasła do .env / Vercela
 │   └── src/
+│       └── lib/seed.js        44 archetypy Core Constructed z inkdecks.com
 └── frontend/       Vite + React + TypeScript + Tailwind v4
 ```
 
@@ -31,7 +32,7 @@ warunek wejścia na platformę bez dysku — patrz `DEPLOY.md`.
 
 ```bash
 yarn install
-yarn db:migrate   # raz: tworzy schemat i wsiewa archetypy
+yarn db:migrate   # schemat + presety archetypów; bezpieczne do powtarzania
 yarn dev          # API na :4000, frontend na :5173
 ```
 
@@ -138,11 +139,16 @@ Lista to **dwie różne rzeczy i tak też jest zbudowana**. Wcześniej było osi
 identycznych kafli, w których te cztery niosące wiedzę niczym nie różniły się od
 siedemdziesięciu sześciu pustych.
 
-**Zescoutowany gracz to kafel**: dwie linie — nick i płytki kolorów w jednej, opis pod
-spodem na całą szerokość (dwie linie i wielokropek) — uniesiony nad tło i **zmyty kolorami
-decka**. Gradient idzie od pierwszego atramentu do drugiego, w tej samej kolejności co
-płytki po prawej. Przy nicku nie ma żadnego znacznika: kolor wiersza *jest* deckiem, a nie
+**Zescoutowany gracz to kafel**: dwie linie — nick, archetyp i płytki kolorów w jednej, opis
+pod spodem na całą szerokość (dwie linie i wielokropek) — uniesiony nad tło i **zmyty
+kolorami decka**. Gradient idzie od pierwszego atramentu do drugiego, w tej samej kolejności
+co płytki po prawej. Przy nicku nie ma żadnego znacznika: kolor wiersza *jest* deckiem, a nie
 raportem o decku obok niego.
+
+Archetyp jedzie w górnej linii, nie w opisie: to odpowiedź na „czym on gra”, czyli na pytanie,
+po które się w tę listę wchodzi, a opis pod spodem jest przycięty do dwóch linii, o które nie
+musi z nikim walczyć. Chip ma własną elipsę i `flex: none` — długa nazwa brewu skróci się
+sama, zamiast zepchnąć płytki z wiersza.
 
 **Pusty gracz to wiersz w skorowidzu**: bez wypełnienia, bez zaokrągleń, oddzielony
 włoskiem, o połowę niższy (46 px, wciąż ponad minimum dla kciuka), z przerywanym gniazdem
@@ -176,6 +182,83 @@ o ten sam słownik zaokrąglonych prostokątów. Sam pasek *jest* polem — cał
 obszar łapie tapnięcie. Przy pisaniu zapala się złotą szyną wzdłuż całej dolnej krawędzi
 (jedyny moment złota na ekranie listy) i pokazuje po prawej liczbę trafień, bo to jedyne
 pytanie, jakie stawia szukanie po 81 nazwiskach.
+
+## Archetypy
+
+Sheet ma trzy pola: kolory, **archetyp** i opis. Archetyp jest selectem, nie polem tekstowym,
+i jest **zawężony do wybranej pary kolorów** — wybierasz Amber i Emerald, dostajesz cztery opcje
+zamiast czterdziestu czterech. Jedną ręką, w czterdzieści sekund, „Elinor" z listy czterech to
+jedno tapnięcie; wpisane odręcznie przez osiemdziesiąt osób staje się „Elinor", „elinor",
+„Elinor value", „ELINOR" i „elinior”, czyli pięcioma archetypami dla każdego późniejszego
+zliczania.
+
+**Select jest zawsze na ekranie.** Bez kolorów jest wyłączony i **pusty** — bez podpisu, bez
+opcji, sama przygaszona ramka ze strzałką, bo to już mówi „lista, ale jeszcze nie teraz". Nie
+znika: pole, które pojawia się i chowa pod kciukiem, przesuwa przycisk Zapisz w momencie, gdy
+ktoś już do niego sięga. Po wybraniu pary **zaznacza się najpopularniejszy archetyp tej pary**,
+bo dla większości graczy na sali to zgadnięcie jest po prostu trafne, a jedno tapnięcie bije
+dwa.
+
+**Nie ma opcji „Nieznany".** Skoro para zawsze wchodzi z domyślnym archetypem, pozycja
+„nieznany" byłaby tylko sposobem na odznaczenie go z powrotem — a odznaczonego archetypu i tak
+nikt nie liczy. Konsekwencja jest jedna i warto ją znać: **archetypu nie da się już wyzerować
+osobno** (zeruje go „Wyczyść", które usuwa cały raport, albo zmiana kolorów), a domyślne
+zgadnięcie zapisuje się jako fakt — jeśli scout go nie poprawi, w bazie leży najpopularniejszy
+deck pary, nie to, co widział.
+
+Puste pole jednak istnieje w jednym prawdziwym przypadku: **para, dla której meta nie ma ani
+jednego archetypu**. Wtedy select stoi na pustej pozycji bez etykiety i pod nią jest tylko
+dopisanie. Bez tej pustej pozycji `null` nie miałby pasującej opcji, a przeglądarka pokazałaby
+jako zaznaczone „+ Dodaj archetyp…", podczas gdy zapis nie wysyłałby nic.
+
+To domyślne zaznaczenie nie jest destrukcyjne i to jest najciekawsza część logiki
+(`settledPair` w `ScoutModal`). Zaczyna od pary z **zapisanego raportu**, więc otwarcie sheeta
+nigdy nie przepisuje tego, co ktoś wpisał — nawet gdy jego archetyp nie zgadza się z kolorami,
+bo taka niezgodność jest do zobaczenia przez człowieka, nie do cichego poprawienia. Przesuwa się
+dopiero wtedy, gdy default naprawdę wskoczył, więc zmiana pary w trakcie doczytywania listy
+presetów nie gubi go — efekt wraca, gdy lista dojedzie. A skoro się przesuwa, wybór scouta się
+trzyma: nic go nie nadpisze, dopóki ktoś nie ruszy kolorów.
+
+Lista presetów to **44 archetypy** przepisane z tabeli
+[inkdecks.com](https://inkdecks.com/lorcana-metagame/core) dla Core Constructed (Attack of The
+Vine!, Set 13, stan na 5 VIII 2026) i siedzi w `backend/src/lib/seed.js`. Kolejność wierszy jest
+ta z serwisu — metashare malejąco — i staje się `sort_order`, czyli tym, co decyduje o domyślnym
+wyborze. **Ruby/Sapphire nie ma ani jednego archetypu** i tak ma być: serwis żadnego dla tej pary
+nie podaje, więc jej picker oferuje tylko dopisanie.
+
+Odświeża się przez `yarn db:migrate`: seed jest **autorytatywny dla wierszy `source='seed'`**
+(nadpisuje je i usuwa te, których już nie ma na liście) i **nie dotyka wierszy `source='user'`**.
+Dlatego ta kolumna istnieje — bez niej pierwsza migracja zabetonowałaby presety na zawsze, a
+lista zrobiona z metagry musi za metagrą chodzić.
+
+**Ostatnia opcja to zawsze „+ Dodaj archetyp…”.** Lista presetów, której nie może rozszerzyć
+osoba patrząca na decka, jest listą, która starzeje się przy pierwszym brewie — a wtedy
+archetyp wraca do opisu, gdzie nikt go nie policzy. Dopisany archetyp to **wiersz w tabeli,
+nie string na jednym raporcie**: zostaje dla całej ekipy, dla tej pary kolorów, na stałe.
+`POST /api/archetypes` jest otwarty dla każdego za wspólnym hasłem (scouting jest anonimowy
+z założenia, a osoba z hasłem admina nie zawsze stoi przy stole) i jest **idempotentny** —
+dwóch scoutów nazywających ten sam nowy deck w odstępie minuty to przypadek oczekiwany, nie
+błąd do pokazania: drugi dostaje wiersz, który już istnieje, i sheet zaznacza go tak, jakby to
+on go stworzył. Wielkość liter nie tworzy duplikatu (`COLLATE NOCASE`).
+
+**Nazwa to goła etykieta** — „Elinor", „Midrange" — bez pary kolorów w środku, bo płytki obok
+i tak ją mówią kolorem. Konsekwencja jest strukturalna: etykieta **nie identyfikuje** archetypu.
+Z 44 pozycji tylko 28 nazw jest różnych; „Midrange" należy do czterech par, „Evasive" do
+czterech innych. Dlatego tabela jest unikalna na **`(name, inks)`**, a nie na nazwie, i dlatego
+każda funkcja w `frontend/src/shared/archetypes.ts` bierze parę jako argument. Migracja, która
+to przestawia, przebudowuje tabelę (SQLite nie umie zdjąć `UNIQUE`), przenosząc wszystko razem
+z `source`.
+
+Select **zawsze zawiera aktualną wartość**, nawet gdy nie pasuje do pary ani do żadnego presetu:
+bez tego zmiana kolorów wyrzuciłaby zapisany archetyp z jego własnej listy, a następny zapis
+cicho wyczyściłby czyjś raport. Taka osierocona wartość jedzie na początku listy, żeby select
+otwierał się na tym, co naprawdę jest zapisane.
+
+Presety nie jadą w odpowiedzi rostera, choć zmieściłyby ekran w jednym zapytaniu. Roster
+czyta każdy telefon na sali co pięć minut, a presety zmieniają się kilka razy na turniej —
+jazda na gapę oznaczałaby płacenie za tę listę setki razy, żeby zobaczyć dwie zmiany. Pobiera
+je więc ekran listy osobno i poza ścieżką krytyczną (`useArchetypes` w `RosterPage`), żeby
+siedziały w cache, zanim czyjkolwiek kciuk dojedzie do sheeta.
 
 ## Sheet się zwija palcem
 
@@ -389,10 +472,12 @@ Wifi na sali turniejowej jest złe, a listę otwiera się kilkadziesiąt razy dz
   listę razem. Wcześniej trzeba było `/api/event` na nazwę, `/api/participants` na listę
   i `/api/auth/me` na taby w topbarze — trzy round-tripy przed pierwszym pikselem.
 - **Chudy payload.** Endpoint wysyła dokładnie to, co rysuje ekran:
-  `registrationId`, `displayName`, `handle`, `active`, `scouting { inks, notes }`. Dla 81
-  graczy to **8,5 kB zamiast 94 kB** (−91%); przy pełnej sali 168 osób proporcja jest ta
-  sama. Archetypy, tech karty, `confidence`, awatary, rekordy meczowe, kraj, pronouny
-  i drużyna zostają w bazie — po prostu nikt ich już nie wyświetla.
+  `registrationId`, `displayName`, `handle`, `active`,
+  `scouting { inks, archetype, notes }`. Dla 81 graczy to **rząd 8,5 kB zamiast 94 kB**
+  (−91%); przy pełnej sali 168 osób proporcja jest ta sama. Tech karty, `confidence`,
+  awatary, rekordy meczowe, kraj, pronouny i drużyna zostają w bazie — po prostu nikt ich
+  już nie wyświetla. Archetyp doszedł do tej listy razem z selectem w sheecie: kilkanaście
+  znaków na zescoutowanego gracza, za to rysuje się na wierszu i prefilluje sheet.
 - **Snapshot w `localStorage`.** Ostatnia dobra lista siedzi pod kluczem
   `rph-scouter:roster` i jest podawana jako `initialData`, więc drugie wejście rysuje
   graczy w pierwszej klatce i dopiero potem odświeża w tle. Gdy wifi padnie, lista nadal
@@ -416,14 +501,16 @@ czeka na upstream.
 
 `PUT /api/scouting/:id` przyjmuje tylko te pola, które chce zmienić. Klucz **nieobecny**
 w payloadzie zostaje taki, jaki był w bazie; `null` czyści go jawnie. Dzięki temu zapis
-z dzisiejszego sheeta (`{ inks, notes }`) nie wyciera archetypu ani tech kart, które ktoś
-wpisał pod starym UI. Logika siedzi w `parseScouting` w `backend/src/lib/validate.js`.
+z dzisiejszego sheeta (`{ inks, archetype, notes }`) nie wyciera tech kart ani `confidence`,
+które ktoś wpisał pod starym UI. Logika siedzi w `parseScouting`
+w `backend/src/lib/validate.js`.
 
 ## Endpointy bez UI
 
-`/api/archetypes` i `/api/stats` działają, ale **nic z frontu ich już nie wywołuje** —
-poszły razem z presetami archetypów i widokiem meta. Zostawione świadomie: tabela
-`archetypes` jest nietknięta, więc oba ekrany da się przywrócić bez ruszania backendu.
+`/api/stats` działa, ale **nic z frontu go nie wywołuje** — poszedł razem z widokiem meta.
+Zostawiony świadomie: liczy rozkład par atramentów, archetypów i tech kart wprost z bazy, więc
+ten ekran da się przywrócić bez ruszania backendu, a teraz, kiedy archetyp jest polem
+wybieranym z listy, jego wyniki wreszcie coś znaczą.
 
 **`/api/cards/search` już nie działa** i to jest świadome cofnięcie powyższej zasady.
 Baza 3161 kart ładowała się przy każdym starcie tylko po to, żeby obsłużyć autocomplete
@@ -465,11 +552,12 @@ Za wspólnym hasłem — wszystko poniżej odpowiada `401 access_required` bez c
 | POST | `/api/event/refresh` | odświeżenie listy (gość w granicach TTL) |
 | GET | `/api/participants/delta?since=` | co się zmieniło od tego kursora — polling ekranu listy |
 | GET | `/api/participants/:registrationId` | pełny rekord gracza, ze wszystkimi polami |
-| GET | `/api/archetypes` | presety archetypów — bez UI |
+| GET | `/api/archetypes` | presety archetypów — lista do selecta w sheecie |
+| POST | `/api/archetypes` | dopisanie archetypu, którego nie ma (idempotentne) |
 | GET | `/api/stats` | rozkład par atramentów, archetypów, tech kart — bez UI |
 
 Dodatkowo tylko admin: `PUT /api/event`, `GET /api/event/lookup/:id`,
-`POST|DELETE /api/archetypes`, `GET /api/scouting/history/all`. Logowanie admina
+`DELETE /api/archetypes/:id`, `GET /api/scouting/history/all`. Logowanie admina
 (`/api/auth/*`) też jest za bramką — organizator wpisuje wspólne hasło jak każdy, a w zamian
 nikt bez niego nie dobije się nawet do `POST /api/auth/login`, żeby je młócić.
 

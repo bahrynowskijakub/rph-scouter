@@ -18,10 +18,30 @@ export interface AccessState {
   reason?: AccessProblem;
 }
 
-/** What a scout files: the deck's inks and a free-text description. Nothing else. */
+/** What a scout files: the deck's inks, its archetype, and a free-text description. */
 export interface ScoutingReport {
   inks: InkId[];
+  /**
+   * The archetype label on its own — "Elinor", "Midrange" — with no ink pair spelled into it,
+   * because `inks` above is right there and gets drawn as plates. The pair is what disambiguates
+   * it: four different pairs run something called "Midrange".
+   */
+  archetype: string | null;
   notes: string | null;
+}
+
+/**
+ * A preset in the picker. `inks` is the pair it belongs to, which is what the sheet filters
+ * on — pick Amber and Emerald and only Amber/Emerald archetypes are offered.
+ */
+export interface Archetype {
+  id: number;
+  name: string;
+  inks: InkId[];
+  style: string | null;
+  note: string | null;
+  /** 'seed' came off the meta list; 'user' was typed into the sheet by somebody scouting. */
+  source: 'seed' | 'user';
 }
 
 /**
@@ -85,8 +105,14 @@ export interface RosterDelta {
  * confidence) are simply absent, and the API keeps whatever it already had for them
  * rather than wiping older reports.
  */
+/**
+ * A save is merging, not replacing — a key left out keeps whatever the stored report had, and
+ * `null` is what clears one. Hence the optional keys: the sheet sends all three, but the
+ * distinction is load-bearing on the backend (`parseScouting`).
+ */
 export interface ScoutingInput {
   inks: InkId[];
+  archetype?: string | null;
   notes: string | null;
 }
 

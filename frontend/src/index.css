@@ -427,6 +427,24 @@ select {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* The archetype, between the nick and the plates. `flex: none` with its own ellipsis so a long
+   brew name shortens itself instead of shoving the pair off the row — the plates are the one
+   thing on this line that must never move. */
+.player-arch {
+  flex: none;
+  max-width: 42%;
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 1.25;
+  color: var(--text-2);
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--text) 8%, transparent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .player-inks {
   flex: none;
   display: flex;
@@ -861,6 +879,46 @@ select {
   box-shadow: inset 0 0 0 1.5px color-mix(in oklch, var(--gold) 60%, transparent);
 }
 
+/* A select styled as one of our inputs. `appearance: none` takes the native control away and
+   with it the arrow, so the arrow comes back as a background chevron — inline SVG in the
+   stylesheet rather than a file, because a picker in a bottom sheet should not wait on a
+   request to look finished. */
+.select {
+  appearance: none;
+  padding-right: 40px;
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none' stroke='%23888' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M1 1.5 6 6.5l5-5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+  cursor: pointer;
+  /* Long archetype names stay on one line rather than growing the control taller than the
+     fields around it. */
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A disabled field still has to look like a field.
+   `-webkit-text-fill-color` is the one that matters and the one that is easy to miss: on a
+   disabled control Chrome and Safari paint the text with it rather than with `color`, using
+   their own dark grey. Against this dark surface that is invisible ink — and since
+   `appearance: none` has already taken the native frame away, the archetype picker on an
+   unscouted player rendered as a bare dark rectangle. Which is most of the roster.
+   So both are stated here, and the field keeps a visible box and a dimmed chevron. */
+.input:disabled {
+  /* `--text-2`, not `--muted`: muted lands at 3.7:1 on this surface, and the whole complaint
+     about the old version was that the field could not be read. 9.1:1 can. What says "disabled"
+     is the dimmed box, the quiet chevron and the cursor — not text nobody can see. */
+  color: var(--text-2);
+  -webkit-text-fill-color: var(--text-2);
+  opacity: 1;
+  cursor: not-allowed;
+  background-color: color-mix(in oklch, var(--surface-2) 55%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--text) 10%, transparent);
+}
+.select:disabled {
+  /* Same chevron, quieter — it is what says "this is a list" while there is nothing to list. */
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none' stroke='%23555' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M1 1.5 6 6.5l5-5'/%3E%3C/svg%3E");
+}
+
 .textarea {
   min-height: 88px;
   line-height: 1.5;
@@ -1064,6 +1122,13 @@ select {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+/* The archetype after the player, lighter — the row is a list of who was touched, and what
+   they were changed to is the qualifier, not the subject. */
+.log-arch {
+  margin-left: 7px;
+  font-weight: 400;
+  color: var(--muted);
 }
 .log-time {
   font-size: 12px;

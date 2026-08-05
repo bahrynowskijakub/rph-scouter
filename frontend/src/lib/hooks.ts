@@ -2,7 +2,14 @@ import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { api } from './api';
 import { ACCESS_KEY, readAccessHint, syncAccessHint } from './access';
-import type { Participant, RosterDelta, RosterState, ScoutingInput } from './types';
+import type {
+  Archetype,
+  InkId,
+  Participant,
+  RosterDelta,
+  RosterState,
+  ScoutingInput,
+} from './types';
 
 export const keys = {
   roster: ['roster'] as const,
@@ -10,6 +17,7 @@ export const keys = {
   event: ['event'] as const,
   me: ['me'] as const,
   history: ['history'] as const,
+  archetypes: ['archetypes'] as const,
   // Lives in access.ts because the fetch wrapper writes to it from outside React.
   access: ACCESS_KEY,
 };
@@ -378,6 +386,48 @@ export function useClearScouting() {
   return useMutation({
     mutationFn: ({ id }: { id: number }) => api.scouting.clear(id),
     onSuccess: ({ participant, cursor }) => patch(participant, cursor),
+  });
+}
+
+/* ──────────────────────────────────── archetypes ──────────────────────────────────── */
+
+/**
+ * The preset list, fetched once and then left alone.
+ *
+ * Deliberately *not* folded into the roster response, even though that would keep the screen
+ * at one request. The roster is re-read every five minutes by every phone in the hall and the
+ * presets change a handful of times per event, so riding along would mean paying for the list
+ * hundreds of times to see it change twice. Fetched from the roster screen instead, off the
+ * critical path, so it is already in cache before anybody's thumb reaches a sheet.
+ */
+export function useArchetypes() {
+  return useQuery({
+    queryKey: keys.archetypes,
+    queryFn: api.archetypes.list,
+    staleTime: 30 * 60_000,
+    select: (data) => data.archetypes,
+  });
+}
+
+/**
+ * Add a preset the list does not have. The response is authoritative — the server may hand
+ * back a row that already existed under that name, or one whose stored name it qualified with
+ * the ink pair — so the caller uses `archetype.name`, never the text it sent.
+ */
+export function useCreateArchetype() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ name, inks }: { name: string; inks: InkId[] }) =>
+      api.archetypes.create(name, inks),
+    onSuccess: ({ archetype }) => {
+      // Patch it straight in rather than refetching: the sheet is about to render the select
+      // with this option selected, and a round trip would flash it as missing.
+      qc.setQueryData<{ archetypes: Archetype[] }>(keys.archetypes, (prev) => {
+        if (!prev) return { archetypes: [archetype] };
+        if (prev.archetypes.some((a) => a.id === archetype.id)) return prev;
+        return { archetypes: [...prev.archetypes, archetype] };
+      });
+    },
   });
 }
 

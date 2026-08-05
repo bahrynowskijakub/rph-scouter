@@ -21,6 +21,9 @@ export default function RosterRow({ participant, nick, index, onSelect }: Props)
   const { scouting } = participant;
   // Sorted once here so the wash, the plates and the label all agree on which ink leads.
   const inks = sortInks(scouting?.inks ?? []);
+  // Just "Elinor" — the plates two centimetres to the right are saying the colours, in colour,
+  // which is why the stored label does not carry them.
+  const archetype = scouting?.archetype || null;
 
   const classes = ['player'];
   if (!scouting) classes.push('player-blank');
@@ -33,7 +36,7 @@ export default function RosterRow({ participant, nick, index, onSelect }: Props)
       onClick={onSelect}
       aria-label={
         scouting
-          ? `${nick} — ${inkPairLabel(inks)}. Edytuj.`
+          ? `${nick} — ${inkPairLabel(inks)}${archetype ? `, ${archetype}` : ''}. Edytuj.`
           : `${nick} — brak decka. Uzupełnij.`
       }
       style={
@@ -50,6 +53,10 @@ export default function RosterRow({ participant, nick, index, onSelect }: Props)
     >
       <span className="player-head">
         <span className="player-nick">{nick}</span>
+        {/* The archetype rides with the nick rather than down on the note line: it is the
+            answer to "what does he play", which is the question the row exists for, and the
+            note underneath is clamped to two lines it would have to compete for. */}
+        {archetype && <span className="player-arch">{archetype}</span>}
         {/* Plates for a filed deck, the dashed socket for an empty one — every row ends
             in the same hexagonal footprint, so the column never goes ragged. */}
         <span className="player-inks">

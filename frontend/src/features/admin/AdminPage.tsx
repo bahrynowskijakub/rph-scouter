@@ -116,7 +116,8 @@ function EventPanel() {
 /**
  * Public writes are anonymous by design, so `actor` plus a timestamp is the whole audit
  * trail. The ink pair rides along because "kto ruszył Kubę" is nearly always really
- * "na co zmienili Kubę".
+ * "na co zmienili Kubę" — and since the sheet started offering archetypes, the answer to that
+ * is usually one word, so the word comes too.
  */
 function HistoryPanel() {
   const { data } = useQuery({
@@ -150,7 +151,12 @@ function HistoryPanel() {
                 {h.payload?.inks && h.payload.inks.length > 0 && (
                   <InkPair inks={h.payload.inks} size="xs" />
                 )}
-                <span className="log-name">{h.displayName}</span>
+                <span className="log-name">
+                  {h.displayName}
+                  {h.payload?.archetype && (
+                    <span className="log-arch">{h.payload.archetype}</span>
+                  )}
+                </span>
                 <span className="log-time">
                   {h.scoutName || h.actor} · {relativeTime(h.createdAt)}
                 </span>

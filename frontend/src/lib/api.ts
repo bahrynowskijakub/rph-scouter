@@ -1,9 +1,11 @@
 import { accessEpoch, revokeAccess } from './access';
 import type {
   AccessState,
+  Archetype,
   EventMeta,
   EventState,
   HistoryEntry,
+  InkId,
   Participant,
   RosterDelta,
   RosterState,
@@ -112,6 +114,20 @@ export const api = {
       }),
     history: (limit = 150) =>
       request<{ history: HistoryEntry[] }>(`/scouting/history/all?limit=${limit}`),
+  },
+
+  /**
+   * The archetype presets. `create` is open to anyone past the gate — the meta moves during an
+   * event and the person holding the admin password is not always the person at the table — and
+   * it answers with the stored row whether it inserted one or found the name already there.
+   */
+  archetypes: {
+    list: () => request<{ archetypes: Archetype[] }>('/archetypes'),
+    create: (name: string, inks: InkId[]) =>
+      request<{ archetype: Archetype; created: boolean }>('/archetypes', {
+        method: 'POST',
+        body: JSON.stringify({ name, inks }),
+      }),
   },
 
   /** Admin only — the roster screen never asks for this. */

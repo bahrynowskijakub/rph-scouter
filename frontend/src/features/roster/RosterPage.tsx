@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { useDebounced, useRoster } from '@/lib/hooks';
+import { useArchetypes, useDebounced, useRoster } from '@/lib/hooks';
 import { normalize } from '@/lib/format';
 import type { Participant } from '@/lib/types';
 import ScoutModal from '@/features/scouting/ScoutModal';
@@ -45,6 +45,14 @@ function CloseIcon() {
 
 export default function RosterPage() {
   const { data, isPending, error } = useRoster();
+
+  /**
+   * Warmed here, used in the sheet. Nothing on this screen renders the presets, but every sheet
+   * opened from it needs them, and fetching on open would put a round trip between a thumb and
+   * a select — on hall wifi, visibly. Its own `staleTime` means this costs one request a
+   * session, not one per row tapped.
+   */
+  useArchetypes();
 
   const [query, setQuery] = useState('');
 

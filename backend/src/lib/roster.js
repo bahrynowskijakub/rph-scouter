@@ -307,12 +307,14 @@ async function getParticipant(eventId, registrationId) {
    match records, pronouns, countries and team names were never rendered — dropping them is
    the difference between a couple of hundred KB and a couple of dozen on the hall's wifi.
 
-   Reports keep their archetype, tech cards and confidence in the database; they are just not
-   sent, because nothing displays them any more.                                         */
+   The archetype is sent — a short label like "Elinor" that the sheet offers as a preset for
+   the chosen ink pair, so it earns its handful of bytes twice over: it prefills the picker and
+   it reads on the row beside the plates. Tech cards and confidence stay in the database
+   unsent, because nothing displays those.                                                */
 
 const SELECT_ROSTER = `
   SELECT p.registration_id, p.display_name, p.handle, p.active,
-         s.id AS scouting_id, s.inks, s.notes
+         s.id AS scouting_id, s.inks, s.archetype, s.notes
     FROM participants p
     LEFT JOIN scouting s
       ON s.event_id = p.event_id AND s.registration_id = p.registration_id
@@ -325,7 +327,11 @@ function rowToRosterEntry(row) {
     handle: row.handle,
     active: !!row.active,
     scouting: row.scouting_id
-      ? { inks: sortInks(parseJsonArray(row.inks)), notes: row.notes || null }
+      ? {
+          inks: sortInks(parseJsonArray(row.inks)),
+          archetype: row.archetype || null,
+          notes: row.notes || null,
+        }
       : null,
   };
 }

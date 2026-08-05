@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const { db, one, batch } = require('../src/db');
+const { db, one, all, batch } = require('../src/db');
 const { DB_URL } = require('../src/config');
 const { SEED_ARCHETYPES } = require('../src/lib/seed');
 
@@ -88,17 +88,179 @@ const SCHEMA = `
   -- whole room repeats, and on a database billed per row read it is the bill.
   CREATE INDEX IF NOT EXISTS idx_history_cursor ON scouting_history (event_id, id DESC);
 
-  -- Archetype presets offered in the scouting modal. Seeded, then admin-editable.
+  -- Archetype presets the scouting sheet offers for the deck's ink pair. Seeded from the meta
+  -- list, and extended by whoever is scouting when the meta throws up something new.
+  --
+  -- Keyed on (name, inks), NOT on name. The name is the bare label inkdecks puts in its
+  -- Archetype column — "Elinor", "Midrange" — because the pair is already on screen as two ink
+  -- plates and spelling it into the text as well is the same thing said twice. The consequence
+  -- is that a label does not identify an archetype: eleven of the 44 are shared between pairs,
+  -- "Midrange" across four of them. Only the pair makes it unambiguous.
+  --
+  -- The source column is what makes the preset list refreshable: 'seed' rows are replaced
+  -- wholesale by the list in lib/seed.js on every migrate, 'user' rows are never touched.
   CREATE TABLE IF NOT EXISTS archetypes (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    name       TEXT    NOT NULL UNIQUE,
+    name       TEXT    NOT NULL,
     inks       TEXT    NOT NULL DEFAULT '[]',
     style      TEXT,
     note       TEXT,
     sort_order INTEGER NOT NULL DEFAULT 100,
-    created_at TEXT    NOT NULL
+    source     TEXT    NOT NULL DEFAULT 'seed',
+    created_at TEXT    NOT NULL,
+    UNIQUE (name, inks)
   );
 `;
+
+/**
+ * `CREATE TABLE IF NOT EXISTS` says nothing about a table that already exists, so a column
+ * added to the schema above has to be added to older databases by hand. SQLite has no
+ * `ADD COLUMN IF NOT EXISTS`; PRAGMA is the way to ask.
+ */
+async function addColumnIfMissing(table, column, definition) {
+  const columns = await all(`PRAGMA table_info(${table})`);
+  if (columns.some((c) => c.name === column)) return false;
+  await db.execute(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  console.log(`[migrate] ${table}.${column} added`);
+  return true;
+}
+
+/**
+ * Rebuild the table when it still carries the old `UNIQUE (name)` constraint.
+ *
+ * SQLite cannot drop a constraint, so this is the copy-and-rename dance. It is needed because
+ * the presets stopped spelling the ink pair into their own names: the labels are now the bare
+ * ones inkdecks uses, eleven of which are shared between pairs, so uniqueness has to move to
+ * (name, inks) or the second pair wanting "Midrange" collides with the first.
+ *
+ * Everything is carried over, `source` and all. `INSERT OR IGNORE` covers the one way the copy
+ * can fail: an old row whose (name, inks) already arrived from another row — nothing in the old
+ * seed collides that way, but a hand-added duplicate is not worth aborting a migration for.
+ */
+async function rebuildForPairUniqueness() {
+  const row = await one("SELECT sql FROM sqlite_master WHERE type='table' AND name='archetypes'");
+  if (!row?.sql || /UNIQUE\s*\(\s*name\s*,\s*inks\s*\)/i.test(row.sql)) return false;
+
+  await db.executeMultiple(`
+    CREATE TABLE archetypes_new (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      name       TEXT    NOT NULL,
+      inks       TEXT    NOT NULL DEFAULT '[]',
+      style      TEXT,
+      note       TEXT,
+      sort_order INTEGER NOT NULL DEFAULT 100,
+      source     TEXT    NOT NULL DEFAULT 'seed',
+      created_at TEXT    NOT NULL,
+      UNIQUE (name, inks)
+    );
+
+    INSERT OR IGNORE INTO archetypes_new
+      (name, inks, style, note, sort_order, source, created_at)
+      SELECT name, inks, style, note, sort_order, source, created_at FROM archetypes;
+
+    DROP TABLE archetypes;
+    ALTER TABLE archetypes_new RENAME TO archetypes;
+  `);
+
+  console.log('[migrate] archetypes rebuilt with UNIQUE (name, inks)');
+  return true;
+}
+
+/**
+ * Decide, once, which rows in a pre-`source` database were presets and which were people.
+ *
+ * The column defaults to 'seed', and `syncPresets` deletes seed rows that are no longer on the
+ * list — so without this step the first migrate after the rename would take an archetype
+ * somebody added through the old admin endpoint and delete it as a retired preset. Which is
+ * precisely the one thing the source column exists to prevent.
+ *
+ * The old seed's names are the only reliable way to tell them apart, so they are written out
+ * here. They all carry a slash, the current list never does, and nothing else in the codebase
+ * needs to remember them.
+ */
+const LEGACY_SEED_NAMES = [
+  'Amber/Emerald Elinor',
+  'Amber/Ruby Boost',
+  'Amber/Amethyst Midrange',
+  'Amber/Steel Steelsong',
+  'Amethyst/Ruby Evasive',
+  'Amber/Emerald Aggro',
+  'Sapphire/Steel Detectives',
+  'Amethyst/Steel Dwarfs',
+  'Amethyst/Sapphire Blurple',
+  'Emerald/Ruby Sid',
+  'Ruby/Steel Supers',
+  'Emerald/Steel Merida',
+  'Emerald/Sapphire Support',
+  'Ruby/Sapphire Items',
+  'Amber/Sapphire Madrigals',
+  'Amethyst/Emerald Burn',
+  'Amber/Ruby Monsters',
+];
+
+async function classifyLegacyRows() {
+  const placeholders = LEGACY_SEED_NAMES.map(() => '?').join(', ');
+  const promoted = await db.execute({
+    sql: `UPDATE archetypes SET source = 'user' WHERE name NOT IN (${placeholders})`,
+    args: LEGACY_SEED_NAMES,
+  });
+  const n = Number(promoted.rowsAffected) || 0;
+  console.log(
+    n
+      ? `[migrate] ${n} archetype(s) not from the old seed list kept as source='user'`
+      : '[migrate] no hand-added archetypes found in the old list'
+  );
+}
+
+/**
+ * Bring the preset rows in line with lib/seed.js, and leave everything a scout added alone.
+ *
+ * The old behaviour — seed only into an empty table — meant the presets could never be
+ * corrected: the first `yarn db:migrate` fixed them in place forever, and a list built from the
+ * meta needs to follow the meta. So the seed is now authoritative over `source='seed'` rows and
+ * blind to `source='user'` ones, which is the whole reason that column exists. Retired presets
+ * are dropped; a name that moves from the seed list to nowhere stops being offered.
+ *
+ * A report that already names a retired preset is untouched — `scouting.archetype` is text, not
+ * a foreign key, and the sheet always offers the value it was given even when the list has
+ * forgotten it.
+ */
+async function syncPresets() {
+  const now = new Date().toISOString();
+  /** The natural key, as text, so the retire step can ask "still on the list?" in one query. */
+  const keys = SEED_ARCHETYPES.map((a) => `${a.name}|${JSON.stringify(a.inks)}`);
+
+  await batch(
+    SEED_ARCHETYPES.map((a, i) => ({
+      sql: `INSERT INTO archetypes (name, inks, style, note, sort_order, source, created_at)
+            VALUES (?, ?, ?, ?, ?, 'seed', ?)
+            ON CONFLICT(name, inks) DO UPDATE SET
+              style = excluded.style,
+              note = excluded.note,
+              sort_order = excluded.sort_order,
+              source = 'seed'`,
+      args: [a.name, JSON.stringify(a.inks), a.style ?? null, a.note ?? null, i * 10, now],
+    }))
+  );
+
+  const placeholders = keys.map(() => '?').join(', ');
+  const retired = await db.execute({
+    sql: `DELETE FROM archetypes
+           WHERE source = 'seed'
+             AND name || '|' || inks NOT IN (${placeholders || "''"})`,
+    args: keys,
+  });
+
+  const total = (await one('SELECT COUNT(*) AS n FROM archetypes'))?.n ?? 0;
+  const userAdded =
+    (await one("SELECT COUNT(*) AS n FROM archetypes WHERE source = 'user'"))?.n ?? 0;
+
+  console.log(
+    `[migrate] archetypes: ${SEED_ARCHETYPES.length} presets synced` +
+      `, ${Number(retired.rowsAffected) || 0} retired` +
+      `, ${userAdded} kept from scouts (${total} total)`
+  );
+}
 
 async function migrate() {
   // Only local file mode has a directory to create; a libsql:// URL has nothing to mkdir.
@@ -109,21 +271,14 @@ async function migrate() {
   await db.executeMultiple(SCHEMA);
   console.log('[migrate] schema up to date');
 
-  const count = (await one('SELECT COUNT(*) AS n FROM archetypes'))?.n ?? 0;
-  if (count > 0) {
-    console.log(`[migrate] archetypes: ${count} already present, not seeding`);
-    return;
+  // Order matters: the source column has to exist, and legacy rows have to be classified while
+  // their old names are still in place, before the table is rebuilt around the new key.
+  if (await addColumnIfMissing('archetypes', 'source', "TEXT NOT NULL DEFAULT 'seed'")) {
+    await classifyLegacyRows();
   }
+  await rebuildForPairUniqueness();
 
-  const now = new Date().toISOString();
-  await batch(
-    SEED_ARCHETYPES.map((a, i) => ({
-      sql: `INSERT INTO archetypes (name, inks, style, note, sort_order, created_at)
-            VALUES (?, ?, ?, ?, ?, ?)`,
-      args: [a.name, JSON.stringify(a.inks), a.style, a.note, i * 10, now],
-    }))
-  );
-  console.log(`[migrate] seeded ${SEED_ARCHETYPES.length} archetype presets`);
+  await syncPresets();
 }
 
 migrate()
